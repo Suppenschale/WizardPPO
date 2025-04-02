@@ -1,0 +1,9 @@
+env:
+  num_players: 4
+  seed: 16112004
+  random: False
+  debug_print: False
+
+sim:
+  iter: 100_000
+  dir: "./data"
