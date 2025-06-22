@@ -10,6 +10,8 @@ RANKS = [rank for rank in range(0, 15)]
 SUITS = ["RED", "YELLOW", "GREEN", "BLUE"]
 DECK = [Card(rank, suit) for rank, suit in product(RANKS, SUITS)]
 
+WIZARD = 14
+JESTER = 0
 
 class Environment:
 
@@ -113,7 +115,7 @@ class Environment:
             print(f"Trump card: {self.trump}")
 
         # If Wizard is trump chose a random color
-        if self.trump.rank == 14:
+        if self.trump.rank == WIZARD:
             self.trump = Card(-1, self.rng.choice(SUITS))
             if self.DEBUG_PRINT:
                 print(f"Color chosen : {self.trump.suit}")
@@ -152,16 +154,16 @@ class Environment:
     def actions(self) -> list[Card]:
 
         # If no card was played or first card is Wizard or Jester -> play any card
-        if not self.first_card or self.first_card.rank in [0, 14]:
+        if not self.first_card or self.first_card.rank in [JESTER, WIZARD]:
             return self.players_hand[self.cur_player]
 
         # No suit of first played card -> play any card
         if not {c for c in self.players_hand[self.cur_player]
-                if c.suit == self.first_card.suit and c.rank not in [0, 14]}:
+                if c.suit == self.first_card.suit and c.rank not in [JESTER, WIZARD]}:
             return self.players_hand[self.cur_player]
 
         return [c for c in self.players_hand[self.cur_player]
-                if c.suit == self.first_card.suit or c.rank in [0, 14]]
+                if c.suit == self.first_card.suit or c.rank in [JESTER, WIZARD]]
 
     def step(self, card: Card) -> None:
 
@@ -254,11 +256,11 @@ class Environment:
             return False
 
         # Wizard and Jester can always be played
-        if card.rank in [0, 14]:
+        if card.rank in [JESTER, WIZARD]:
             return True
 
         # If the first card played is no Wizard or Jester...
-        if self.first_card and self.first_card.rank not in [0, 14]:
+        if self.first_card and self.first_card.rank not in [JESTER, WIZARD]:
             # and played suit is different from first card suit...
             if card.suit != self.first_card.suit:
                 # then there must not be a suit in players hand
