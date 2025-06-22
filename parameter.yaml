@@ -5,5 +5,10 @@ env:
   debug_print: False
 
 sim:
-  iter: 100_000
+  iter: 1 #100_000
   dir: "./data"
+
+nn:
+  input_layer: 198
+  hidden_layer_shared: 512
+  hidden_layer_each: 256
