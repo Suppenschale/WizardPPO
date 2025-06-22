@@ -1,13 +1,23 @@
 from env.card import Card
+from env.environment import JESTER
+from env.environment import WIZARD
 
 
 def bidding_heuristic(hand: list[Card], trump: Card) -> int:
     bid = 0
 
-    # Each wizard is considered as trick
-    bid += sum([1 for card in hand if card.rank == 14])
+    for card in hand:
 
-    #print(hand)
-    #print(trump)
+        # For every Wizard in hand increase the bid
+        if card.rank == WIZARD:
+            bid += 1
+
+        # For every trump in hand increase the bid
+        if card.suit == trump.suit and card.rank not in [JESTER, WIZARD]:
+            bid += 1
+
+        # For every 13 in hand increase the bid
+        if card.rank == 13 and card.suit != trump.suit:
+            bid += 1
 
     return bid
