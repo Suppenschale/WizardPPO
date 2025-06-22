@@ -1,7 +1,7 @@
-from random import random
-
 import numpy as np
 import yaml
+
+from tqdm import tqdm
 
 from env.bidding_heuristic import bidding_heuristic
 from env.environment import Environment
@@ -27,7 +27,7 @@ class Simulation:
 
         env = Environment()
 
-        for i in range(self.num_iter):
+        for _ in tqdm(range(self.num_iter), "Simulating"):
             env.reset()
             for r in range(60 // self.num_players):
                 env.start_round(r + 1, start_player=r % self.num_players)
@@ -45,13 +45,8 @@ class Simulation:
                 if p == max(env.players_points):
                     stats[player] += 1
 
-            if i % 1000 == 0:
-                print(f"{i}/{self.num_iter}")
-
         print("")
         print("Simulation is over")
         print(f"Percentage wins after {self.num_iter} iterations")
         for i in range(self.num_players):
             print(f"Player {i + 1}: {stats[i] / np.sum(stats) * 100.0} (avg. points: {np.mean(points[i])})")
-
-
