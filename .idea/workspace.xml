@@ -4,17 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="17f829b2-4b0e-4fed-b0f0-5b9468435637" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/Project.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/env/card.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/env/environment.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/parameter.yaml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/sim/simulation.py" afterDir="false" />
+    <list default="true" id="17f829b2-4b0e-4fed-b0f0-5b9468435637" name="Changes" comment="Simulation environment for Wizard">
+      <change afterPath="$PROJECT_DIR$/env/bidding_heuristic.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/nn/PPO_network.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/Project.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Project.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/env/card.py" beforeDir="false" afterPath="$PROJECT_DIR$/env/card.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/env/environment.py" beforeDir="false" afterPath="$PROJECT_DIR$/env/environment.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/parameter.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/parameter.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/sim/simulation.py" beforeDir="false" afterPath="$PROJECT_DIR$/sim/simulation.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -46,7 +44,7 @@
     "Python.main.executor": "Run",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "git-widget-placeholder": "master",
-    "last_opened_file_path": "C:/Users/Paul/Documents/JKU/2025_SS/BachelorThesis/Project",
+    "last_opened_file_path": "C:/Users/Paul/Documents/JKU/2025_SS/BachelorThesis/Project/main.py",
     "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
   }
 }]]></component>
@@ -66,7 +64,7 @@
         <env name="PYTHONUNBUFFERED" value="1" />
       </envs>
       <option name="SDK_HOME" value="" />
-      <option name="SDK_NAME" value="pythonProject" />
+      <option name="SDK_NAME" value="BA" />
       <option name="WORKING_DIRECTORY" value="" />
       <option name="IS_MODULE_SDK" value="false" />
       <option name="ADD_CONTENT_ROOTS" value="true" />
@@ -97,6 +95,19 @@
       <option name="presentableId" value="Default" />
       <updated>1742381739291</updated>
     </task>
+    <task id="LOCAL-00001" summary="Simulation environment for Wizard">
+      <option name="closed" value="true" />
+      <created>1743638305086</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1743638305086</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Simulation environment for Wizard" />
+    <option name="LAST_COMMIT_MESSAGE" value="Simulation environment for Wizard" />
   </component>
 </project>
