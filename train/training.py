@@ -13,7 +13,7 @@ from env.environment import Environment
 
 class Training:
 
-    def __init__(self, T: int, policy: PPONetwork, optimizer: Optimizer):
+    def __init__(self, policy: PPONetwork, optimizer: Optimizer):
         with open("parameter.yaml", "r") as f:
             config = yaml.safe_load(f)
 
@@ -27,8 +27,9 @@ class Training:
         self.clip_eps = config["train"]["clip_eps"]
         self.a1 = config["train"]["a1"]
         self.a2 = config["train"]["a2"]
-        self.T = T
         self.num_players = config["env"]["num_players"]
+        self.T = (60 // self.num_players) * (60 // self.num_players + 1) // 2
+        print(self.T)
 
         self.device = next(self.policy.parameters()).device
 
@@ -36,31 +37,34 @@ class Training:
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
-        for _ in range(self.num_iter):
+        for asdf in range(self.num_iter):
             env = Environment()
-            env.start_round(self.T)
 
-            for player in range(env.num_players):
-                env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+            for r in range(1, 60 // self.num_players + 1):
 
-            for _ in range(self.T):
+                env.start_round(r)
 
                 for player in range(env.num_players):
-                    state = env.get_state_vector().to(self.device)
-                    action_mask = env.get_action_mask().to(self.device)
-                    action, log_prob, value = self.policy.select_action(state, action_mask)
+                    env.bid(bidding_heuristic(env.players_hand[player], env.trump))
 
-                    states.append(state.detach())
-                    action_masks.append(action_mask)
-                    actions.append(action)
-                    log_probs.append(log_prob.detach())
-                    values.append(value.detach())
+                for _ in range(r):
 
-                    env.step(action)
+                    for player in range(env.num_players):
+                        state = env.get_state_vector().to(self.device)
+                        action_mask = env.get_action_mask().to(self.device)
+                        action, log_prob, value = self.policy.select_action(state, action_mask)
 
-            for _ in range(self.T):
-                for player in range(env.num_players):
-                    rewards.append(env.players_points[player])
+                        states.append(state.detach())
+                        action_masks.append(action_mask)
+                        actions.append(action)
+                        log_probs.append(log_prob.detach())
+                        values.append(value.detach())
+
+                        env.step(action)
+
+                for _ in range(r):
+                    for player in range(env.num_players):
+                        rewards.append(env.players_points[player])
 
         return {
             'states': torch.stack(states),

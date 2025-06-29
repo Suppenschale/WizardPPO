@@ -25,6 +25,7 @@ class Simulation:
 
         stats = np.zeros(self.num_players)
         points = np.empty(self.num_players, dtype=object)
+        random_poly = PPONetwork()
 
         for i in range(self.num_players):
             points[i] = []
@@ -33,15 +34,20 @@ class Simulation:
 
         for _ in tqdm(range(self.num_iter), "Simulating"):
             env.reset()
-            for r in range(60 // self.num_players):
-                env.start_round(r + 1, start_player=r % self.num_players)
+            for r in range(1, 60 // self.num_players + 1):
+                env.start_round(r, start_player=r % self.num_players)
                 for player in range(self.num_players):
                     env.bid(bidding_heuristic(env.players_hand[player], env.trump))
-                for _ in range(r + 1):
-                    for _ in range(self.num_players):
-                        action = env.actions()
-                        card = env.rng.choice(action)
-                        env.step(card)
+                for _ in range(r):
+                    for player in range(self.num_players):
+                        state = env.get_state_vector()
+                        action_mask = env.get_action_mask()
+                        if player == 0:
+                            with torch.no_grad():
+                                action, _, _ = self.network.select_action(state, action_mask)
+                        else:
+                            action, _, _ = random_poly.select_action(state, action_mask)
+                        env.step(action)
 
             for player in range(self.num_players):
                 p = env.players_points[player]

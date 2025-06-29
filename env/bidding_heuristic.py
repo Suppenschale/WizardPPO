@@ -1,3 +1,5 @@
+import numpy as np
+
 from env.card import Card
 from env.environment import JESTER
 from env.environment import WIZARD
@@ -13,11 +15,15 @@ def bidding_heuristic(hand: list[Card], trump: Card) -> int:
             bid += 1
 
         # For every trump in hand increase the bid
-        if card.suit == trump.suit and card.rank not in [JESTER, WIZARD]:
+        if trump and card.suit == trump.suit and card.rank not in [JESTER, WIZARD]:
             bid += 1
 
         # For every 13 in hand increase the bid
-        if card.rank == 13 and card.suit != trump.suit:
+        if trump and card.rank == 13 and card.suit != trump.suit:
             bid += 1
 
-    return bid
+        # In the last round (no trump), count all cards >= 10
+        if not trump and card.rank >= 10 and card.rank != WIZARD:
+            bid += 1
+
+    return np.clip(bid + np.random.randint(-2, 3), 0, len(hand))

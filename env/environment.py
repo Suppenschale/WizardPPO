@@ -135,7 +135,7 @@ class Environment:
             print(f"Trump card: {self.trump}")
 
         # If Wizard is trump chose a random color
-        if self.trump.rank == WIZARD:
+        if self.trump and self.trump.rank == WIZARD:
             self.trump = Card(-1, self.rng.choice(SUITS))
             if self.DEBUG_PRINT:
                 print(f"Color chosen : {self.trump.suit}")
@@ -334,7 +334,7 @@ class Environment:
         num_of_wizards = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == WIZARD])]
         num_of_jesters = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == JESTER])]
         num_of_trumps = [sum([1 for card in self.players_hand[self.cur_player] if
-                              card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
+                              self.trump and card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
 
         card_played_in_trick = one_hot_encode_cards(self.cards_played_in_trick)
         players_left = [self.num_players - self.player_counter - 1]
@@ -345,7 +345,7 @@ class Environment:
         wizards_played = [sum([1 for card in self.cards_played if card.rank == WIZARD])]
         jesters_played = [sum([1 for card in self.cards_played if card.rank == JESTER])]
         trump_played = [sum([1 for card in self.cards_played if
-                             card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
+                             self.trump and card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
 
         cur_player = self.cur_player
         tricks_left = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
