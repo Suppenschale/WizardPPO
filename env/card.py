@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import Optional
 
 
 @dataclass(frozen=True)
@@ -6,7 +9,7 @@ class Card:
     rank: int
     suit: str
 
-    def is_higher_than(self, other, trump):
+    def is_higher_than(self, other: Card, trump: Optional[Card]):
         # self Wizard -> wins if other no Wizard
         if self.rank == 14:
             return self.rank > other.rank
@@ -21,12 +24,12 @@ class Card:
 
         # self trump and other no trump -> wins
         # but trump is no Jester
-        if self.suit == trump.suit and other.suit != trump.suit and trump.rank != 0:
+        if trump and self.suit == trump.suit and other.suit != trump.suit and trump.rank != 0:
             return True
 
         # self no trump and other trump -> loose
         # but trump is no Jester
-        if self.suit != trump.suit and other.suit == trump.suit and trump.rank != 0:
+        if trump and self.suit != trump.suit and other.suit == trump.suit and trump.rank != 0:
             return False
 
         # different suits -> loose

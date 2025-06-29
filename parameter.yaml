@@ -5,10 +5,20 @@ env:
   debug_print: False
 
 sim:
-  iter: 1 #100_000
+  iter: 10_000
   dir: "./data"
 
 nn:
   input_layer: 198
   hidden_layer_shared: 512
   hidden_layer_each: 256
+
+train:
+  iter: 48
+  gamma: 0.995
+  lambda: 0.95
+  epochs: 4
+  minibatch_size: 256
+  clip_eps: 0.2
+  a1: 0.5
+  a2: 0.02

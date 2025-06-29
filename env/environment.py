@@ -1,4 +1,6 @@
 import random
+import numpy as np
+import torch
 from typing import Optional
 
 import yaml
@@ -12,6 +14,17 @@ DECK = [Card(rank, suit) for rank, suit in product(RANKS, SUITS)]
 
 WIZARD = 14
 JESTER = 0
+
+
+def one_hot_encode_cards(cards: list[Card]) -> np.array:
+    one_hot = np.zeros(60)
+    suit_to_index = {s: i for i, s in enumerate(SUITS)}
+
+    for card in cards:
+        idx = suit_to_index[card.suit] * 15 + card.rank
+        one_hot[idx] = 1
+    return one_hot
+
 
 class Environment:
 
@@ -54,6 +67,9 @@ class Environment:
         self.trump: Optional[Card] = None
         self.first_card: Optional[Card] = None
 
+        self.cards_played_in_trick: list[Card] = []
+        self.cards_played: list[Card] = []
+
     def __str__(self):
         return "Wizard Environment"
 
@@ -81,6 +97,10 @@ class Environment:
         self.trump = None
         self.first_card = None
 
+        # Played cards
+        self.cards_played_in_trick = []
+        self.cards_played = []
+
     def start_round(self, num_rounds: int, start_player: int = 0) -> None:
 
         # Reset environment
@@ -106,9 +126,9 @@ class Environment:
         # Deal the trump
         if self.deck:
             self.trump = self.deck.pop()
+            self.cards_played.append(self.trump)
         else:
-            # placeholder for no card
-            self.trump = Card(0, "")
+            self.trump = None
 
         if self.DEBUG_PRINT:
             print(f"Start of round {num_rounds}")
@@ -165,14 +185,17 @@ class Environment:
         return [c for c in self.players_hand[self.cur_player]
                 if c.suit == self.first_card.suit or c.rank in [JESTER, WIZARD]]
 
-    def step(self, card: Card) -> None:
+    def step(self, card_idx: int) -> None:
 
         if self.bidding is None:
             raise ValueError("No round has started yet")
 
         # Check if bidding phase is over
         if self.bidding:
-            raise ValueError("Playing is ")
+            raise ValueError("Bidding is not over yet")
+
+        # Compute card
+        card = Card(card_idx % 15, SUITS[card_idx // 15])
 
         # Check if step is valid
         if card not in self.players_hand[self.cur_player]:
@@ -190,6 +213,10 @@ class Environment:
 
         # Remove card from players hand
         self.players_hand[self.cur_player].remove(card)
+
+        # Add played card to history
+        self.cards_played_in_trick.append(card)
+        self.cards_played.append(card)
 
         # If played card is better than best card, replace high card
         if self.first_card and card.is_higher_than(self.high_card, self.trump):
@@ -219,6 +246,7 @@ class Environment:
             self.player_counter = 0
             self.round_counter += 1
             self.first_card = None
+            self.cards_played_in_trick = []
 
             if self.DEBUG_PRINT:
                 print(f"Trick {self.round_counter} of {self.num_rounds} is over")
@@ -264,7 +292,86 @@ class Environment:
             # and played suit is different from first card suit...
             if card.suit != self.first_card.suit:
                 # then there must not be a suit in players hand
-                if {c for c in self.players_hand[self.cur_player] if c.suit == self.first_card.suit and c.rank not in [0, 14]}:
+                if {c for c in self.players_hand[self.cur_player] if
+                    c.suit == self.first_card.suit and c.rank not in [JESTER, WIZARD]}:
                     return False
 
         return True
+
+    def beat_current_high_card(self) -> set[Card]:
+
+        # If no card is played, all cards can win the trick
+        if self.high_card is None:
+            return set(DECK)
+
+        # Collect all cards which can beat high card
+        cards_higher_than_high_card = set()
+        for card in DECK:
+            if card.is_higher_than(self.high_card, self.trump):
+                cards_higher_than_high_card.add(card)
+
+        # Trump can not beat high card since it can not be played
+        if self.trump:
+            cards_higher_than_high_card.discard(self.trump)
+
+        return cards_higher_than_high_card.difference(self.cards_played).difference(self.players_hand[self.cur_player])
+
+    def one_hot_encode_trump_color(self) -> np.array:
+        one_hot = np.zeros(5)
+
+        if self.trump:
+            one_hot[SUITS.index(self.trump.suit)] = 1
+        else:
+            one_hot[4] = 1
+        return one_hot
+
+    def get_action_mask(self) -> torch.Tensor:
+        return torch.from_numpy(one_hot_encode_cards(self.actions())).float()
+
+    def get_state_vector(self) -> torch.Tensor:
+        hand = one_hot_encode_cards(self.players_hand[self.cur_player])
+        card_left = [len(self.players_hand[self.cur_player])]
+        num_of_wizards = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == WIZARD])]
+        num_of_jesters = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == JESTER])]
+        num_of_trumps = [sum([1 for card in self.players_hand[self.cur_player] if
+                              card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
+
+        card_played_in_trick = one_hot_encode_cards(self.cards_played_in_trick)
+        players_left = [self.num_players - self.player_counter - 1]
+        cards_left = [len(self.beat_current_high_card())]
+        trump_color = self.one_hot_encode_trump_color()
+
+        card_played = one_hot_encode_cards(self.cards_played)
+        wizards_played = [sum([1 for card in self.cards_played if card.rank == WIZARD])]
+        jesters_played = [sum([1 for card in self.cards_played if card.rank == JESTER])]
+        trump_played = [sum([1 for card in self.cards_played if
+                             card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
+
+        cur_player = self.cur_player
+        tricks_left = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        cur_player = (cur_player + 1) % self.num_players
+        tricks_left_opp1 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        cur_player = (cur_player + 1) % self.num_players
+        tricks_left_opp2 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        cur_player = (cur_player + 1) % self.num_players
+        tricks_left_opp3 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+
+        state_vector = np.concatenate([hand,
+                                       card_left,
+                                       num_of_wizards,
+                                       num_of_jesters,
+                                       num_of_trumps,
+                                       card_played_in_trick,
+                                       players_left,
+                                       cards_left,
+                                       trump_color,
+                                       card_played,
+                                       wizards_played,
+                                       jesters_played,
+                                       trump_played,
+                                       tricks_left,
+                                       tricks_left_opp1,
+                                       tricks_left_opp2,
+                                       tricks_left_opp3])
+
+        return torch.from_numpy(state_vector).float()

@@ -4,15 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="17f829b2-4b0e-4fed-b0f0-5b9468435637" name="Changes" comment="Simulation environment for Wizard">
-      <change afterPath="$PROJECT_DIR$/env/bidding_heuristic.py" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/nn/PPO_network.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/Project.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/Project.iml" afterDir="false" />
+    <list default="true" id="17f829b2-4b0e-4fed-b0f0-5b9468435637" name="Changes" comment="Added training.py for training">
+      <change beforePath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/env/card.py" beforeDir="false" afterPath="$PROJECT_DIR$/env/card.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/env/environment.py" beforeDir="false" afterPath="$PROJECT_DIR$/env/environment.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/nn/PPO_network.py" beforeDir="false" afterPath="$PROJECT_DIR$/nn/PPO_network.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/parameter.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/parameter.yaml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/sim/simulation.py" beforeDir="false" afterPath="$PROJECT_DIR$/sim/simulation.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/train/training.py" beforeDir="false" afterPath="$PROJECT_DIR$/train/training.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -38,16 +38,16 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Python.Main.executor": "Run",
-    "Python.main.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "master",
-    "last_opened_file_path": "C:/Users/Paul/Documents/JKU/2025_SS/BachelorThesis/Project/main.py",
-    "settings.editor.selected.configurable": "com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.Main.executor&quot;: &quot;Run&quot;,
+    &quot;Python.main.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/Paul/Documents/JKU/2025_SS/BachelorThesis/Project/main.py&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;Errors&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\Paul\Documents\JKU\2025_SS\BachelorThesis\Project\env" />
@@ -103,11 +103,112 @@
       <option name="project" value="LOCAL" />
       <updated>1743638305086</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="Created Proximal Policy Optimization Network">
+      <option name="closed" value="true" />
+      <created>1750600801303</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1750600801303</updated>
+    </task>
+    <task id="LOCAL-00003" summary="Added heuristic for number of bids for given hand and trump">
+      <option name="closed" value="true" />
+      <created>1750600832829</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1750600832829</updated>
+    </task>
+    <task id="LOCAL-00004" summary="Removed total ordering">
+      <option name="closed" value="true" />
+      <created>1750600858794</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1750600858794</updated>
+    </task>
+    <task id="LOCAL-00005" summary="Replaced 0 and 14 by constants WIZARD and JESTER">
+      <option name="closed" value="true" />
+      <created>1750600905111</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1750600905111</updated>
+    </task>
+    <task id="LOCAL-00006" summary="Added parameter for neural network">
+      <option name="closed" value="true" />
+      <created>1750600938755</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1750600938755</updated>
+    </task>
+    <task id="LOCAL-00007" summary="Added average points over all iterations&#10;&#10;Added bidding heuristic">
+      <option name="closed" value="true" />
+      <created>1750600985931</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1750600985931</updated>
+    </task>
+    <task id="LOCAL-00008" summary="Changed conda environment to BA">
+      <option name="closed" value="true" />
+      <created>1750601013654</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1750601013654</updated>
+    </task>
+    <task id="LOCAL-00009" summary="Added more heuristic information">
+      <option name="closed" value="true" />
+      <created>1750604796617</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1750604796617</updated>
+    </task>
+    <task id="LOCAL-00010" summary="Added tqdm progress bar">
+      <option name="closed" value="true" />
+      <created>1750604822676</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1750604822676</updated>
+    </task>
+    <task id="LOCAL-00011" summary="Added training.py for training">
+      <option name="closed" value="true" />
+      <created>1750604844048</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1750604844048</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Simulation environment for Wizard" />
-    <option name="LAST_COMMIT_MESSAGE" value="Simulation environment for Wizard" />
+    <MESSAGE value="Created Proximal Policy Optimization Network" />
+    <MESSAGE value="Added heuristic for number of bids for given hand and trump" />
+    <MESSAGE value="Removed total ordering" />
+    <MESSAGE value="Replaced 0 and 14 by constants WIZARD and JESTER" />
+    <MESSAGE value="Added parameter for neural network" />
+    <MESSAGE value="Added average points over all iterations&#10;&#10;Added bidding heuristic" />
+    <MESSAGE value="Changed conda environment to BA" />
+    <MESSAGE value="Added more heuristic information" />
+    <MESSAGE value="Added tqdm progress bar" />
+    <MESSAGE value="Added training.py for training" />
+    <option name="LAST_COMMIT_MESSAGE" value="Added training.py for training" />
   </component>
 </project>

@@ -1,3 +1,4 @@
+import torch.distributions
 import torch.nn as nn
 import torch.nn.functional as F
 import yaml
@@ -27,15 +28,21 @@ class PPONetwork(nn.Module):
         shared = self.shared(x)
         shared = F.relu(shared)
 
-        state = self.hidden_layer_state(shared)
-        state = F.relu(state)
-        state = self.output_layer_value(state)
+        value = self.hidden_layer_state(shared)
+        value = F.relu(value)
+        value = self.output_layer_value(value)
 
-        action = self.hidden_layer_action(shared)
-        action = F.relu(action)
-        action = self.hidden_layer_all_actions(action)
-        action = action.masked_fill(~mask.bool(), float('-inf'))
-        action = F.softmax(action)
+        probs = self.hidden_layer_action(shared)
+        probs = F.relu(probs)
+        probs = self.hidden_layer_all_actions(probs)
+        probs = probs.masked_fill(~mask.bool(), float('-inf'))
+        probs = F.softmax(probs, dim=-1)
 
-        return state, action
+        return value, probs
+
+    def select_action(self, x, mask):
+        value, probs = self.forward(x, mask)
+        dist = torch.distributions.Categorical(probs)
+        action = dist.sample()
+        return action.item(), dist.log_prob(action), value
 
