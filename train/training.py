@@ -1,14 +1,68 @@
+from queue import Empty
+
+import matplotlib
 import torch
 import torch.nn.functional as F
 import yaml
 import numpy as np
+import matplotlib
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+import torch.multiprocessing as mp
+import os
 from torch.optim import Optimizer
 from tqdm import tqdm, trange
 
 from env.bidding_heuristic import bidding_heuristic
 from nn.PPO_network import PPONetwork
 from env.environment import Environment
+
+
+def trajectory(policy, device, task_queue, result_queue):
+
+    policy.eval()
+    with torch.no_grad():
+
+        while True:
+
+            try:
+                task_id = task_queue.get(timeout=1)
+            except Empty:
+                break
+            if task_id is None:
+                break
+
+            states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
+
+            env = Environment()
+
+            for r in range(1, 60 // env.num_players + 1):
+
+                env.start_round(r)
+
+                for player in range(env.num_players):
+                    env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+
+                for _ in range(r):
+
+                    for player in range(env.num_players):
+                        state = env.get_state_vector().to(device)
+                        action_mask = env.get_action_mask().to(device)
+                        action, log_prob, value = policy.select_action(state, action_mask)
+
+                        states.append(state.cpu().detach().tolist())
+                        action_masks.append(action_mask)
+                        actions.append(action)
+                        log_probs.append(log_prob.cpu().detach().tolist())
+                        values.append(value.cpu().detach().tolist())
+
+                        env.step(action)
+
+                for _ in range(r):
+                    for player in range(env.num_players):
+                        rewards.append(env.players_points[player])
+
+            result_queue.put((states, action_masks, actions, rewards, log_probs, values))
 
 
 class Training:
@@ -29,50 +83,50 @@ class Training:
         self.a2 = config["train"]["a2"]
         self.num_players = config["env"]["num_players"]
         self.T = (60 // self.num_players) * (60 // self.num_players + 1) // 2
-        print(self.T)
 
         self.device = next(self.policy.parameters()).device
+        self.device = "cpu"
 
     def collect_batch(self):
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
-        for asdf in range(self.num_iter):
-            env = Environment()
+        task_queue = mp.Queue()
+        result_queue = mp.Queue()
 
-            for r in range(1, 60 // self.num_players + 1):
+        for i in range(self.num_iter):
+            task_queue.put(i)
 
-                env.start_round(r)
+        processes = []
+        for i in range(8):
+            p = mp.Process(target=trajectory, args=(self.policy, self.device, task_queue, result_queue))
+            p.start()
+            processes.append(p)
 
-                for player in range(env.num_players):
-                    env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+        counter = 0
+        while counter < self.num_iter:
+            try:
+                states_p, action_masks_p, actions_p, rewards_p, log_probs_p, values_p = result_queue.get(timeout=5)
+                states += states_p
+                action_masks += action_masks_p
+                actions += actions_p
+                rewards += rewards_p
+                log_probs += log_probs_p
+                values += values_p
+                counter += 1
+            except Empty:
+                continue
 
-                for _ in range(r):
-
-                    for player in range(env.num_players):
-                        state = env.get_state_vector().to(self.device)
-                        action_mask = env.get_action_mask().to(self.device)
-                        action, log_prob, value = self.policy.select_action(state, action_mask)
-
-                        states.append(state.detach())
-                        action_masks.append(action_mask)
-                        actions.append(action)
-                        log_probs.append(log_prob.detach())
-                        values.append(value.detach())
-
-                        env.step(action)
-
-                for _ in range(r):
-                    for player in range(env.num_players):
-                        rewards.append(env.players_points[player])
+        for p in processes:
+            p.join()
 
         return {
-            'states': torch.stack(states),
+            'states': torch.tensor(states),
             'action_masks': torch.stack(action_masks),
             'actions': torch.tensor(actions, dtype=torch.long),
             'rewards': torch.tensor(rewards, dtype=torch.long),
-            'log_probs': torch.stack(log_probs),
-            'values': torch.stack(values).squeeze()
+            'log_probs': torch.tensor(log_probs),
+            'values': torch.tensor(values).squeeze()
         }
 
     def compute_advantages(self, rewards, values):
@@ -97,6 +151,8 @@ class Training:
         return torch.tensor(advantages, dtype=torch.float32), torch.tensor(returns, dtype=torch.float32)
 
     def ppo_update(self, batch):
+
+        self.policy.train()
 
         states = batch['states'].to(self.device)
         action_masks = batch['action_masks'].to(self.device)
@@ -160,7 +216,7 @@ class Training:
             value_losses.append(value_loss)
             losses.append(loss)
 
-        x = range(1, iterations+1)
+        x = range(1, iterations + 1)
         fig, axs = plt.subplots(1, 2, figsize=(10, 4))  # (rows, columns)
 
         # First plot (on the left)
@@ -174,4 +230,3 @@ class Training:
         # Improve layout
         plt.tight_layout()
         plt.show()
-
