@@ -57,17 +57,17 @@ class Training:
 
                         action, log_prob, value = self.policies[player].select_action(state, action_mask)
 
-                        states.append(state.detach())
-                        action_masks.append(action_mask)
-                        actions.append(action)
-                        log_probs.append(log_prob.detach())
-                        values.append(value.detach())
+                        if player == self.player_learning:
+                            states.append(state.detach())
+                            action_masks.append(action_mask)
+                            actions.append(action)
+                            log_probs.append(log_prob.detach())
+                            values.append(value.detach())
 
                         env.step(action)
 
                 for _ in range(T):
-                    for player in range(env.num_players):
-                        rewards.append(env.players_points[player])
+                    rewards.append(env.players_points[self.player_learning])
 
         return {
             'states': torch.stack(states),
