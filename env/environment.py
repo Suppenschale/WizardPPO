@@ -11,6 +11,7 @@ from env.card import Card
 RANKS = [rank for rank in range(0, 15)]
 SUITS = ["RED", "YELLOW", "GREEN", "BLUE"]
 DECK = [Card(rank, suit) for rank, suit in product(RANKS, SUITS)]
+DUMMY_CARD = Card(-1, "NO_SUIT")
 
 WIZARD = 14
 JESTER = 0
@@ -45,6 +46,7 @@ class Environment:
             raise ValueError(f"Wizard can not be played with {self.num_players} players")
 
         # Player properties
+        self.players_game_points: list[int] = [0 for _ in range(self.num_players)]
         self.players_points: list[int] = [0 for _ in range(self.num_players)]
         self.players_hand: list[list[Card]] = [[] for _ in range(self.num_players)]
         self.players_bid: list[int] = [0 for _ in range(self.num_players)]
@@ -64,7 +66,7 @@ class Environment:
         self.cur_player: int = 0
         self.high_player: int = 0
         self.high_card: Optional[Card] = None
-        self.trump: Optional[Card] = None
+        self.trump: Card = DUMMY_CARD
         self.first_card: Optional[Card] = None
 
         self.cards_played_in_trick: list[Card] = []
@@ -128,7 +130,8 @@ class Environment:
             self.trump = self.deck.pop()
             self.cards_played.append(self.trump)
         else:
-            self.trump = None
+            # Last round, set dummy trump
+            self.trump = DUMMY_CARD
 
         if self.DEBUG_PRINT:
             print(f"Start of round {num_rounds}")
@@ -265,16 +268,22 @@ class Environment:
             # Compute points
             for i in range(self.num_players):
                 if self.players_bid[i] == self.players_tricks[i]:
-                    self.players_points[i] += 20 + 10 * self.players_bid[i]
+                    self.players_game_points[i] += 20 + 10 * self.players_bid[i]
+                    self.players_points[i] = 20 + 10 * self.players_bid[i]
                 else:
-                    self.players_points[i] -= 10 * abs(self.players_bid[i] - self.players_tricks[i])
+                    self.players_game_points[i] -= 10 * abs(self.players_bid[i] - self.players_tricks[i])
+                    self.players_points[i] = -10 * abs(self.players_bid[i] - self.players_tricks[i])
 
             if self.DEBUG_PRINT:
                 print(f"Round is over")
                 print("")
-                print("Current points: ")
+                print("Round points: ")
                 for i in range(self.num_players):
                     print(f"    Player {i + 1}: {self.players_points[i]}")
+                print("")
+                print("Game points: ")
+                for i in range(self.num_players):
+                    print(f"    Player {i + 1}: {self.players_game_points[i]}")
                 print("")
 
     def legal_move(self, card: Card) -> bool:
@@ -292,11 +301,14 @@ class Environment:
             # and played suit is different from first card suit...
             if card.suit != self.first_card.suit:
                 # then there must not be a suit in players hand
-                if {c for c in self.players_hand[self.cur_player] if
-                    c.suit == self.first_card.suit and c.rank not in [JESTER, WIZARD]}:
+                if {c for c in self.players_hand[self.cur_player] if c.suit == self.first_card.suit and c.rank not in
+                                                                     [JESTER, WIZARD]}:
                     return False
 
         return True
+
+    def get_start_player(self):
+        return self.cur_player
 
     def beat_current_high_card(self) -> set[Card]:
 
@@ -319,7 +331,7 @@ class Environment:
     def one_hot_encode_trump_color(self) -> np.array:
         one_hot = np.zeros(5)
 
-        if self.trump:
+        if self.trump.rank > -1:
             one_hot[SUITS.index(self.trump.suit)] = 1
         else:
             one_hot[4] = 1

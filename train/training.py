@@ -13,13 +13,12 @@ from env.environment import Environment
 
 class Training:
 
-    def __init__(self, T: int, policy: PPONetwork, optimizer: Optimizer):
+    def __init__(self, policy: PPONetwork, optimizer: Optimizer):
         with open("parameter.yaml", "r") as f:
             config = yaml.safe_load(f)
 
-        self.policy = policy
         self.optimizer = optimizer
-        self.num_iter = config["train"]["iter"]
+        self.game_iterations = config["train"]["game_iterations"]
         self.gamma = config["train"]["gamma"]
         self.lamb = config["train"]["lambda"]
         self.epochs = config["train"]["epochs"]
@@ -27,40 +26,48 @@ class Training:
         self.clip_eps = config["train"]["clip_eps"]
         self.a1 = config["train"]["a1"]
         self.a2 = config["train"]["a2"]
-        self.T = T
         self.num_players = config["env"]["num_players"]
 
-        self.device = next(self.policy.parameters()).device
+        self.policies = [PPONetwork() for _ in range(self.num_players)]
+
+        self.player_learning = 0
+        self.policies[self.player_learning] = policy
 
     def collect_batch(self):
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
-        for _ in range(self.num_iter):
+        for _ in range(self.game_iterations):
             env = Environment()
-            env.start_round(self.T)
-
-            for player in range(env.num_players):
-                env.bid(bidding_heuristic(env.players_hand[player], env.trump))
-
-            for _ in range(self.T):
+            for T in range(1, 60 // self.num_players + 1):
+                env.start_round(T)
 
                 for player in range(env.num_players):
-                    state = env.get_state_vector().to(self.device)
-                    action_mask = env.get_action_mask().to(self.device)
-                    action, log_prob, value = self.policy.select_action(state, action_mask)
+                    env.bid(bidding_heuristic(env.players_hand[player], env.trump))
 
-                    states.append(state.detach())
-                    action_masks.append(action_mask)
-                    actions.append(action)
-                    log_probs.append(log_prob.detach())
-                    values.append(value.detach())
+                for _ in range(T):
 
-                    env.step(action)
+                    start = env.get_start_player()
 
-            for _ in range(self.T):
-                for player in range(env.num_players):
-                    rewards.append(env.players_points[player])
+                    for i in range(env.num_players):
+                        state = env.get_state_vector()
+                        action_mask = env.get_action_mask()
+
+                        player = (start + i) % self.num_players
+
+                        action, log_prob, value = self.policies[player].select_action(state, action_mask)
+
+                        states.append(state.detach())
+                        action_masks.append(action_mask)
+                        actions.append(action)
+                        log_probs.append(log_prob.detach())
+                        values.append(value.detach())
+
+                        env.step(action)
+
+                for _ in range(T):
+                    for player in range(env.num_players):
+                        rewards.append(env.players_points[player])
 
         return {
             'states': torch.stack(states),
@@ -76,9 +83,8 @@ class Training:
         returns = np.zeros(len(rewards))
         advantages = np.zeros(len(rewards))
 
-        for i in range(self.num_iter):
+        for i in range(self.game_iterations):
             for player in reversed(range(self.num_players)):
-
                 gae = 0
                 value_next = 0
                 for j in reversed(range(self.T)):
@@ -94,12 +100,12 @@ class Training:
 
     def ppo_update(self, batch):
 
-        states = batch['states'].to(self.device)
-        action_masks = batch['action_masks'].to(self.device)
-        actions = batch['actions'].to(self.device)
-        log_probs_old = batch['log_probs'].to(self.device)
-        values = batch['values'].to(self.device)
-        rewards = batch['rewards'].to(self.device)
+        states = batch['states']
+        action_masks = batch['action_masks']
+        actions = batch['actions']
+        log_probs_old = batch['log_probs']
+        values = batch['values']
+        rewards = batch['rewards']
 
         advantages, returns = self.compute_advantages(rewards, values)
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-12)
@@ -111,14 +117,14 @@ class Training:
 
         for _ in range(self.epochs):
             for mb_states, mb_action_masks, mb_actions, mb_log_probs_old, mb_returns, mb_advantages in loader:
-                mb_states = mb_states.to(self.device)
-                mb_action_masks = mb_action_masks.to(self.device)
-                mb_actions = mb_actions.to(self.device)
-                mb_log_probs_old = mb_log_probs_old.to(self.device)
-                mb_returns = mb_returns.to(self.device)
-                mb_advantages = mb_advantages.to(self.device)
+                mb_states = mb_states
+                mb_action_masks = mb_action_masks
+                mb_actions = mb_actions
+                mb_log_probs_old = mb_log_probs_old
+                mb_returns = mb_returns
+                mb_advantages = mb_advantages
 
-                value_pred, probs = self.policy(mb_states, mb_action_masks)
+                value_pred, probs = self.policies[self.player_learning](mb_states, mb_action_masks)
                 dist = torch.distributions.Categorical(probs)
                 entropy = dist.entropy().mean()
                 log_probs_new = dist.log_prob(mb_actions)
@@ -142,32 +148,36 @@ class Training:
 
     def training_loop(self, iterations):
 
-        value_losses = []
-        losses = []
+        print("Start train loop!")
+        batch = self.collect_batch()
+        print(f"{batch['states'].shape=}")
+        print("End train loop!")
 
-        pbar = trange(iterations)
-        for _ in pbar:
-            batch = self.collect_batch()
-            value_loss, loss = self.ppo_update(batch)
-            pbar.set_postfix({
-                "loss": f"{loss:.4f}",
-                "value_loss": f"{value_loss:.4f}"
-            })
-            value_losses.append(value_loss)
-            losses.append(loss)
+        # value_losses = []
+        # losses = []
 
-        x = range(1, iterations+1)
-        fig, axs = plt.subplots(1, 2, figsize=(10, 4))  # (rows, columns)
+        # pbar = trange(iterations)
+        # for _ in pbar:
+        #    batch = self.collect_batch()
+        #    value_loss, loss = self.ppo_update(batch)
+        #    pbar.set_postfix({
+        #        "loss": f"{loss:.4f}",
+        #        "value_loss": f"{value_loss:.4f}"
+        #    })
+        #    value_losses.append(value_loss)
+        #    losses.append(loss)
+
+        # x = range(1, iterations+1)
+        # fig, axs = plt.subplots(1, 2, figsize=(10, 4))  # (rows, columns)
 
         # First plot (on the left)
-        axs[0].plot(x, losses)
-        axs[0].set_title("Losses")
+        # axs[0].plot(x, losses)
+        # axs[0].set_title("Losses")
 
         # Second plot (on the right)
-        axs[1].plot(x, value_losses)
-        axs[1].set_title("Value Losses")
+        # axs[1].plot(x, value_losses)
+        # axs[1].set_title("Value Losses")
 
         # Improve layout
-        plt.tight_layout()
-        plt.show()
-
+        # plt.tight_layout()
+        # plt.show()
