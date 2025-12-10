@@ -27,6 +27,8 @@ class Training:
         self.a1 = config["train"]["a1"]
         self.a2 = config["train"]["a2"]
         self.num_players = config["env"]["num_players"]
+        self.game_length = 60 // self.num_players
+        self.num_of_rounds = (self.game_length * (self.game_length + 1)) // 2
 
         self.policies = [PPONetwork() for _ in range(self.num_players)]
 
@@ -36,10 +38,13 @@ class Training:
     def collect_batch(self):
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
+        env = Environment()
 
         for _ in range(self.game_iterations):
-            env = Environment()
-            for T in range(1, 60 // self.num_players + 1):
+            env.reset()
+            # TODO Only relevant for testing
+            env.players_game_points = [0 for _ in range(self.num_players)]
+            for T in range(1, self.game_length + 1):
                 env.start_round(T)
 
                 for player in range(env.num_players):
@@ -84,12 +89,11 @@ class Training:
         advantages = np.zeros(len(rewards))
 
         for i in range(self.game_iterations):
-            for player in reversed(range(self.num_players)):
+            for T in range(1, self.game_length + 1):
                 gae = 0
                 value_next = 0
-                for j in reversed(range(self.T)):
-                    t = (i * self.T + j) * self.num_players + player
-
+                for j in reversed(range(T)):
+                    t = i * self.num_of_rounds + (T - 1) * T // 2 + j
                     delta = rewards[t] + self.gamma * value_next - values[t]
                     gae = delta + self.gamma * self.lamb * gae
                     advantages[t] = gae
@@ -109,6 +113,9 @@ class Training:
 
         advantages, returns = self.compute_advantages(rewards, values)
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-12)
+
+        print(f"{advantages.shape=}")
+        print(f"{returns.shape=}")
 
         dataset = torch.utils.data.TensorDataset(states, action_masks, actions, log_probs_old, returns, advantages)
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.minibatch_size, shuffle=True)
@@ -151,6 +158,12 @@ class Training:
         print("Start train loop!")
         batch = self.collect_batch()
         print(f"{batch['states'].shape=}")
+        print(f"{batch['action_masks'].shape=}")
+        print(f"{batch['actions'].shape=}")
+        print(f"{batch['rewards'].shape=}")
+        print(f"{batch['log_probs'].shape=}")
+        print(f"{batch['values'].shape=}")
+        self.ppo_update(batch)
         print("End train loop!")
 
         # value_losses = []
