@@ -1,6 +1,7 @@
 import random
 import numpy as np
 import torch
+from scipy.stats import rankdata
 from typing import Optional
 
 import yaml
@@ -49,6 +50,7 @@ class Environment:
         self.players_hand: list[list[Card]] = [[] for _ in range(self.num_players)]
         self.players_bid: list[int] = [0 for _ in range(self.num_players)]
         self.players_tricks: list[int] = [0 for _ in range(self.num_players)]
+        self.players_tricks_prev: list[int] = [0 for _ in range(self.num_players)]
 
         # Card deck
         self.deck: Optional[list[Card]] = DECK.copy()
@@ -79,6 +81,7 @@ class Environment:
         self.players_hand = [[] for _ in range(self.num_players)]
         self.players_bid = [0 for _ in range(self.num_players)]
         self.players_tricks = [0 for _ in range(self.num_players)]
+        self.players_tricks_prev = [0 for _ in range(self.num_players)]
 
         # Card deck
         self.deck = DECK.copy()
@@ -210,6 +213,7 @@ class Environment:
             print(f"Player {self.cur_player + 1} allowed actions : {self.actions()}")
             print(f"Player {self.cur_player + 1} plays card      : {card}")
             print("")
+            print(self.decode_vector(self.get_state_vector()))
 
         # Remove card from players hand
         self.players_hand[self.cur_player].remove(card)
@@ -292,8 +296,8 @@ class Environment:
             # and played suit is different from first card suit...
             if card.suit != self.first_card.suit:
                 # then there must not be a suit in players hand
-                if {c for c in self.players_hand[self.cur_player] if
-                    c.suit == self.first_card.suit and c.rank not in [JESTER, WIZARD]}:
+                if {c for c in self.players_hand[self.cur_player]
+                    if c.suit == self.first_card.suit and c.rank not in [JESTER, WIZARD]}:
                     return False
 
         return True
@@ -330,31 +334,31 @@ class Environment:
 
     def get_state_vector(self) -> torch.Tensor:
         hand = one_hot_encode_cards(self.players_hand[self.cur_player])
-        card_left = [len(self.players_hand[self.cur_player])]
-        num_of_wizards = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == WIZARD])]
-        num_of_jesters = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == JESTER])]
+        card_left = [len(self.players_hand[self.cur_player]) / self.num_rounds]
+        num_of_wizards = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == WIZARD]) / 4]
+        num_of_jesters = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == JESTER]) / 4]
         num_of_trumps = [sum([1 for card in self.players_hand[self.cur_player] if
-                              self.trump and card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
+                              self.trump and card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]]) / 13]
 
         card_played_in_trick = one_hot_encode_cards(self.cards_played_in_trick)
-        players_left = [self.num_players - self.player_counter - 1]
-        cards_left = [len(self.beat_current_high_card())]
+        players_left = [(self.num_players - self.player_counter - 1) / 3]
+        cards_left = [len(self.beat_current_high_card()) / 60]
         trump_color = self.one_hot_encode_trump_color()
 
         card_played = one_hot_encode_cards(self.cards_played)
-        wizards_played = [sum([1 for card in self.cards_played if card.rank == WIZARD])]
-        jesters_played = [sum([1 for card in self.cards_played if card.rank == JESTER])]
+        wizards_played = [sum([1 for card in self.cards_played if card.rank == WIZARD]) / 4]
+        jesters_played = [sum([1 for card in self.cards_played if card.rank == JESTER]) / 4]
         trump_played = [sum([1 for card in self.cards_played if
-                             self.trump and card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
+                             self.trump and card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]]) / 13]
 
         cur_player = self.cur_player
-        tricks_left = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        tricks_left = [(self.players_bid[cur_player] - self.players_tricks[cur_player])]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp1 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        tricks_left_opp1 = [(self.players_bid[cur_player] - self.players_tricks[cur_player])]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp2 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        tricks_left_opp2 = [(self.players_bid[cur_player] - self.players_tricks[cur_player])]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp3 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        tricks_left_opp3 = [(self.players_bid[cur_player] - self.players_tricks[cur_player])]
 
         state_vector = np.concatenate([hand,
                                        card_left,
@@ -375,3 +379,57 @@ class Environment:
                                        tricks_left_opp3])
 
         return torch.from_numpy(state_vector).float()
+
+    def decode_vector(self, vector):
+        vec = vector.numpy()
+
+        print("VECTOR STATE")
+        print(f"Hand cards:", end=" ")
+        card_idx = np.where(vec[0:60] == 1)[0]
+        cards = [Card(RANKS[i % 15], SUITS[i // 15]) for i in card_idx]
+        print(cards)
+        print(f"Cards left: {vec[60]}")
+
+    def get_reward(self, player):
+
+        reward = 0
+        bid = self.players_bid[player]
+        trick = self.players_tricks[player]
+        trick_prev = self.players_tricks_prev[player]
+
+        # Game is over
+        if self.round_counter >= self.num_rounds == 60 // self.num_players:
+
+            ranks = np.array(rankdata(-np.array(self.players_points), method='min'))
+            reward = - 20 / (self.num_players - 1) * ranks[player] + (10 * self.num_players + 10) / (
+                        self.num_players - 1)
+
+        # Round is over
+        elif self.round_counter >= self.num_rounds:
+            reward = 1 if trick == bid else -1
+
+        # Trick is over
+        else:
+            # If bid == tricks -> positive reward
+            if bid == trick == 0:
+                reward += 0.5
+
+            # If trick moved towards bid -> positive reward
+            if trick_prev < trick <= bid:
+                reward += 0.3
+
+            for p in range(self.num_players):
+                if p == player:
+                    continue
+
+                # If an opponent has overshoot -> positive reward
+                if self.players_tricks_prev[p] <= self.players_bid[p] < self.players_tricks[p]:
+                    reward += 0.5 / self.num_players
+
+            diff = bid - trick
+            # If player has overshoot -> negative reward
+            if diff < 0:
+                reward += diff / max(bid, self.num_rounds - bid)
+
+        self.players_tricks_prev = self.players_tricks.copy()
+        return reward

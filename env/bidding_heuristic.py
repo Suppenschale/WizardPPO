@@ -26,4 +26,4 @@ def bidding_heuristic(hand: list[Card], trump: Card) -> int:
         if not trump and card.rank >= 10 and card.rank != WIZARD:
             bid += 1
 
-    return np.clip(bid + np.random.randint(-2, 3), 0, len(hand))
+    return np.clip(bid , 0, len(hand)) #+ np.random.randint(0, 0)

@@ -1,11 +1,11 @@
 from queue import Empty
 
-import matplotlib
 import torch
 import torch.nn.functional as F
 import yaml
 import numpy as np
 import matplotlib
+
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import torch.multiprocessing as mp
@@ -18,9 +18,7 @@ from nn.PPO_network import PPONetwork
 from env.environment import Environment
 
 
-def trajectory(policy, device, task_queue, result_queue):
-
-    policy.eval()
+def trajectory(policy, task_queue, result_queue):
     with torch.no_grad():
 
         while True:
@@ -46,8 +44,8 @@ def trajectory(policy, device, task_queue, result_queue):
                 for _ in range(r):
 
                     for player in range(env.num_players):
-                        state = env.get_state_vector().to(device)
-                        action_mask = env.get_action_mask().to(device)
+                        state = env.get_state_vector()
+                        action_mask = env.get_action_mask()
                         action, log_prob, value = policy.select_action(state, action_mask)
 
                         states.append(state.cpu().detach().tolist())
@@ -58,10 +56,11 @@ def trajectory(policy, device, task_queue, result_queue):
 
                         env.step(action)
 
-                for _ in range(r):
                     for player in range(env.num_players):
-                        rewards.append(env.players_points[player])
+                        reward = env.get_reward(player)
+                        rewards.append(reward)
 
+            #print(env.players_points)
             result_queue.put((states, action_masks, actions, rewards, log_probs, values))
 
 
@@ -84,9 +83,6 @@ class Training:
         self.num_players = config["env"]["num_players"]
         self.T = (60 // self.num_players) * (60 // self.num_players + 1) // 2
 
-        self.device = next(self.policy.parameters()).device
-        self.device = "cpu"
-
     def collect_batch(self):
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
@@ -99,7 +95,7 @@ class Training:
 
         processes = []
         for i in range(8):
-            p = mp.Process(target=trajectory, args=(self.policy, self.device, task_queue, result_queue))
+            p = mp.Process(target=trajectory, args=(self.policy, task_queue, result_queue))
             p.start()
             processes.append(p)
 
@@ -124,7 +120,7 @@ class Training:
             'states': torch.tensor(states),
             'action_masks': torch.stack(action_masks),
             'actions': torch.tensor(actions, dtype=torch.long),
-            'rewards': torch.tensor(rewards, dtype=torch.long),
+            'rewards': torch.tensor(rewards),
             'log_probs': torch.tensor(log_probs),
             'values': torch.tensor(values).squeeze()
         }
@@ -154,12 +150,12 @@ class Training:
 
         self.policy.train()
 
-        states = batch['states'].to(self.device)
-        action_masks = batch['action_masks'].to(self.device)
-        actions = batch['actions'].to(self.device)
-        log_probs_old = batch['log_probs'].to(self.device)
-        values = batch['values'].to(self.device)
-        rewards = batch['rewards'].to(self.device)
+        states = batch['states']
+        action_masks = batch['action_masks']
+        actions = batch['actions']
+        log_probs_old = batch['log_probs']
+        values = batch['values']
+        rewards = batch['rewards']
 
         advantages, returns = self.compute_advantages(rewards, values)
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-12)
@@ -171,14 +167,14 @@ class Training:
 
         for _ in range(self.epochs):
             for mb_states, mb_action_masks, mb_actions, mb_log_probs_old, mb_returns, mb_advantages in loader:
-                mb_states = mb_states.to(self.device)
-                mb_action_masks = mb_action_masks.to(self.device)
-                mb_actions = mb_actions.to(self.device)
-                mb_log_probs_old = mb_log_probs_old.to(self.device)
-                mb_returns = mb_returns.to(self.device)
-                mb_advantages = mb_advantages.to(self.device)
+                mb_states = mb_states
+                mb_action_masks = mb_action_masks
+                mb_actions = mb_actions
+                mb_log_probs_old = mb_log_probs_old
+                mb_returns = mb_returns
+                mb_advantages = mb_advantages
 
-                value_pred, probs = self.policy(mb_states, mb_action_masks)
+                value, probs = self.policy(mb_states, mb_action_masks)
                 dist = torch.distributions.Categorical(probs)
                 entropy = dist.entropy().mean()
                 log_probs_new = dist.log_prob(mb_actions)
@@ -188,7 +184,7 @@ class Training:
                 surrogate2 = torch.clamp(ratio, 1 - self.clip_eps, 1 + self.clip_eps) * mb_advantages
                 policy_loss = -torch.min(surrogate1, surrogate2).mean()
 
-                value_loss = F.mse_loss(value_pred.squeeze(), mb_returns)
+                value_loss = F.mse_loss(value.squeeze(), mb_returns)
 
                 loss = policy_loss + self.a1 * value_loss - self.a2 * entropy
 
@@ -217,16 +213,15 @@ class Training:
             losses.append(loss)
 
         x = range(1, iterations + 1)
-        fig, axs = plt.subplots(1, 2, figsize=(10, 4))  # (rows, columns)
+        fig, axs = plt.subplots(1, 2, figsize=(10, 4))
 
-        # First plot (on the left)
         axs[0].plot(x, losses)
         axs[0].set_title("Losses")
 
-        # Second plot (on the right)
         axs[1].plot(x, value_losses)
         axs[1].set_title("Value Losses")
 
-        # Improve layout
         plt.tight_layout()
         plt.show()
+
+        return value_losses, losses

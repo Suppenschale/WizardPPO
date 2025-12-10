@@ -30,19 +30,19 @@ class Simulation:
         for i in range(self.num_players):
             points[i] = []
 
-        env = Environment()
-
         for _ in tqdm(range(self.num_iter), "Simulating"):
-            env.reset()
+            env = Environment()
             for r in range(1, 60 // self.num_players + 1):
-                env.start_round(r, start_player=r % self.num_players)
+                env.start_round(r)
+
                 for player in range(self.num_players):
                     env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+                    
                 for _ in range(r):
                     for player in range(self.num_players):
                         state = env.get_state_vector()
                         action_mask = env.get_action_mask()
-                        if player == 0:
+                        if player == 0 or True:
                             with torch.no_grad():
                                 action, _, _ = self.network.select_action(state, action_mask)
                         else:

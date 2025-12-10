@@ -1,6 +1,7 @@
 # Ignore IDE files
 .idea/*
 */__pycache__/
+*xml
 
 # Ignore log files 
 *.npy
@@ -9,3 +10,4 @@
 
 # Ignore main
 main.py
+
