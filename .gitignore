@@ -1,0 +1,11 @@
+# Ignore IDE files
+.idea/*
+*/__pycache__/
+
+# Ignore log files 
+*.npy
+*.pth
+*.txt
+
+# Ignore main
+main.py
