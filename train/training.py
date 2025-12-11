@@ -9,7 +9,7 @@ from torch.optim import Optimizer
 from tqdm import tqdm, trange
 
 from env.bidding_heuristic import bidding_heuristic
-from nn.PPO_network import PPONetwork
+from nn.ppo_network import PPONetwork
 from env.environment import Environment
 
 

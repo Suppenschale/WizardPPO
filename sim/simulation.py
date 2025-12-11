@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 from env.bidding_heuristic import bidding_heuristic
 from env.environment import Environment
-from nn.PPO_network import PPONetwork
+from nn.ppo_network import PPONetwork
 
 
 class Simulation:

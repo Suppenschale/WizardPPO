@@ -7,14 +7,13 @@ import yaml
 from itertools import product
 
 from env.card import Card
+from env.card import JESTER, WIZARD
+from env.suit import Suit
 
 RANKS = [rank for rank in range(0, 15)]
-SUITS = ["RED", "YELLOW", "GREEN", "BLUE"]
-DECK = [Card(rank, suit) for rank, suit in product(RANKS, SUITS)]
-DUMMY_CARD = Card(-1, "NO_SUIT")
-
-WIZARD = 14
-JESTER = 0
+SUITS = [suit for suit in Suit]
+DECK = [Card(rank, suit) for rank, suit in product(RANKS, SUITS) if suit != Suit.NO_SUIT]
+DUMMY_CARD = Card(-1, Suit.NO_SUIT)
 
 
 def one_hot_encode_cards(cards: list[Card]) -> np.array:

@@ -3,11 +3,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+from env.suit import Suit
+
+
+WIZARD = 14
+JESTER = 0
 
 @dataclass(frozen=True)
 class Card:
     rank: int
-    suit: str
+    suit: Suit
+
+    def __post_init__(self):
+        if self.rank in [JESTER, WIZARD]:
+            object.__setattr__(self, "suit", Suit.NO_SUIT)
 
     def is_higher_than(self, other: Card, trump: Optional[Card]):
         # self Wizard -> wins if other no Wizard
