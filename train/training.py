@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
@@ -73,8 +74,9 @@ class Training:
 
                         self.env.step(action)
 
-                for _ in range(T):
-                    rewards.append(self.env.players_points[self.player_learning])
+                for _ in range(T - 1):
+                    rewards.append(0)
+                rewards.append(self.env.players_points[self.player_learning])
 
         return {
             'states': torch.stack(states),
@@ -157,15 +159,20 @@ class Training:
         value_losses = []
         losses = []
 
+        writer = SummaryWriter(log_dir=os.path.join(path, "board"))
+
         batch = self.collect_batch()
 
         pbar = trange(iterations)
-        for _ in pbar:
+        for i in pbar:
             value_loss, loss = self.ppo_update(batch)
             pbar.set_postfix({
                 "loss": f"{loss:.4f}",
                 "value_loss": f"{value_loss:.4f}"
             })
+            writer.add_scalar(tag="Loss/Value", scalar_value=value_loss, global_step=i)
+            writer.add_scalar(tag="Loss/Policy", scalar_value=loss, global_step=i)
+            writer.flush()
             value_losses.append(value_loss)
             losses.append(loss)
 
