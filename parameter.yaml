@@ -5,7 +5,7 @@ env:
   debug_print: False
 
 sim:
-  iter: 10_000
+  iter: 500
   dir: "./data"
 
 nn:

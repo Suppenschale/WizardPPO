@@ -15,11 +15,16 @@ class Simulation:
         with open("parameter.yaml", "r") as f:
             config = yaml.safe_load(f)
 
-        self.num_iter = config["sim"]["iter"]
+        self.iter = config["sim"]["iter"]
         self.dir = config["sim"]["dir"]
         self.num_players: int = config["env"]["num_players"]
+        self.game_length = 60 // self.num_players
         self.network = network
         self.network.eval()
+        self.policies = [PPONetwork() for _ in range(self.num_players)]
+
+        self.player_learning = 0
+        self.policies[self.player_learning] = network
 
     def start(self):
 
@@ -29,29 +34,36 @@ class Simulation:
         for i in range(self.num_players):
             points[i] = []
 
-        env = Environment()
 
-        for _ in tqdm(range(self.num_iter), "Simulating"):
-            env.reset()
-            for r in range(60 // self.num_players):
-                env.start_round(r + 1, start_player=r % self.num_players)
-                for player in range(self.num_players):
+        for _ in tqdm(range(self.iter), "Simulating"):
+            env = Environment()
+            for T in range(1, self.game_length + 1):
+                env.start_round(T)
+
+                for player in range(env.num_players):
                     env.bid(bidding_heuristic(env.players_hand[player], env.trump))
-                for _ in range(r + 1):
-                    for _ in range(self.num_players):
-                        action = env.actions()
-                        card = env.rng.choice(action)
-                        env.step(card)
+
+                for _ in range(T):
+
+                    start = env.get_start_player()
+
+                    for i in range(self.num_players):
+                        state = env.get_state_vector()
+                        action_mask = env.get_action_mask()
+
+                        player = (start + i) % self.num_players
+
+                        action, _, _ = self.policies[player].select_action(state, action_mask)
+                        env.step(action)
 
             for player in range(self.num_players):
-                p = env.players_points[player]
+                p = env.players_game_points[player]
                 points[player].append(p)
                 if p == max(env.players_points):
                     stats[player] += 1
-
         print("")
         print("Simulation is over")
-        print(f"Percentage wins after {self.num_iter} iterations")
+        print(f"Percentage wins after {self.iter} iterations")
         for i in range(self.num_players):
             print(f"Player {i + 1}: {stats[i] / np.sum(stats) * 100.0} (avg. points: {np.mean(points[i])})")
 

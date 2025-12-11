@@ -10,6 +10,7 @@
 *.png
 log
 
-# Ingore main
+# Ingore python scripts
 main.py
+evaluate.py
 

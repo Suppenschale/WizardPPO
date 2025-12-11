@@ -15,7 +15,7 @@ from env.environment import Environment
 
 class Training:
 
-    def __init__(self, policy: PPONetwork, optimizer: Optimizer):
+    def __init__(self, policy: PPONetwork, optimizer: Optimizer, path : str):
         with open("parameter.yaml", "r") as f:
             config = yaml.safe_load(f)
 
@@ -35,6 +35,10 @@ class Training:
         self.env = Environment()
         self.policies = [PPONetwork() for _ in range(self.num_players)]
 
+        self.path = path
+        self.writer = SummaryWriter(log_dir=os.path.join(path, "board"))
+        self.step = 0
+
         self.player_learning = 0
         self.policies[self.player_learning] = policy
 
@@ -42,11 +46,10 @@ class Training:
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
-        for _ in range(self.game_iterations):
+        for game in range(self.game_iterations):
             self.env.reset()
             # TODO Only relevant for testing
             self.env.players_game_points = [0 for _ in range(self.num_players)]
-            self.env = Environment()
             for T in range(1, self.game_length + 1):
                 self.env.start_round(T)
 
@@ -77,6 +80,13 @@ class Training:
                 for _ in range(T - 1):
                     rewards.append(0)
                 rewards.append(self.env.players_points[self.player_learning])
+
+                for player in range(self.num_players):
+                    self.writer.add_scalar(tag=f"Reward/Player{player + 1}",
+                                           scalar_value=self.env.players_points[player],
+                                           global_step=self.step)
+
+                self.step += 1
 
         return {
             'states': torch.stack(states),
@@ -154,25 +164,22 @@ class Training:
 
         return value_loss.item(), loss.item()
 
-    def training_loop(self, iterations, path):
+    def training_loop(self, iterations):
 
         value_losses = []
         losses = []
 
-        writer = SummaryWriter(log_dir=os.path.join(path, "board"))
-
-        batch = self.collect_batch()
-
         pbar = trange(iterations)
         for i in pbar:
+            batch = self.collect_batch()
             value_loss, loss = self.ppo_update(batch)
             pbar.set_postfix({
                 "loss": f"{loss:.4f}",
                 "value_loss": f"{value_loss:.4f}"
             })
-            writer.add_scalar(tag="Loss/Value", scalar_value=value_loss, global_step=i)
-            writer.add_scalar(tag="Loss/Policy", scalar_value=loss, global_step=i)
-            writer.flush()
+            self.writer.add_scalar(tag="Loss/Value", scalar_value=value_loss, global_step=i)
+            self.writer.add_scalar(tag="Loss/Policy", scalar_value=loss, global_step=i)
+            self.writer.flush()
             value_losses.append(value_loss)
             losses.append(loss)
 
@@ -187,9 +194,9 @@ class Training:
 
         plt.tight_layout()
         plt.show()
-        plt.savefig(os.path.join(path, "losses.png"))  # save as PNG
+        plt.savefig(os.path.join(self.path, "losses.png"))  # save as PNG
         plt.close()  # optional: closes the figure
 
-        torch.save(self.policies[self.player_learning].state_dict(), os.path.join(path, "model.pth"))
-        np.save(os.path.join(path, "value-losses.npy"), np.array([]))
-        np.save(os.path.join(path, "losses.npy"), np.array([]))
+        torch.save(self.policies[self.player_learning].state_dict(), os.path.join(self.path, "model.pth"))
+        np.save(os.path.join(self.path, "value-losses.npy"), np.array([]))
+        np.save(os.path.join(self.path, "losses.npy"), np.array([]))
