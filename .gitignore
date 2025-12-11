@@ -7,6 +7,8 @@
 *.npy
 *.pth
 *.txt
+*.png
+log
 
 # Ingore main
 main.py

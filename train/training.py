@@ -3,6 +3,7 @@ import torch.nn.functional as F
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 from torch.optim import Optimizer
 from tqdm import tqdm, trange
 
@@ -30,6 +31,7 @@ class Training:
         self.game_length = 60 // self.num_players
         self.num_of_rounds = (self.game_length * (self.game_length + 1)) // 2
 
+        self.env = Environment()
         self.policies = [PPONetwork() for _ in range(self.num_players)]
 
         self.player_learning = 0
@@ -38,25 +40,25 @@ class Training:
     def collect_batch(self):
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
-        env = Environment()
 
         for _ in range(self.game_iterations):
-            env.reset()
+            self.env.reset()
             # TODO Only relevant for testing
-            env.players_game_points = [0 for _ in range(self.num_players)]
+            self.env.players_game_points = [0 for _ in range(self.num_players)]
+            self.env = Environment()
             for T in range(1, self.game_length + 1):
-                env.start_round(T)
+                self.env.start_round(T)
 
-                for player in range(env.num_players):
-                    env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+                for player in range(self.env.num_players):
+                    self.env.bid(bidding_heuristic(self.env.players_hand[player], self.env.trump))
 
                 for _ in range(T):
 
-                    start = env.get_start_player()
+                    start = self.env.get_start_player()
 
-                    for i in range(env.num_players):
-                        state = env.get_state_vector()
-                        action_mask = env.get_action_mask()
+                    for i in range(self.env.num_players):
+                        state = self.env.get_state_vector()
+                        action_mask = self.env.get_action_mask()
 
                         player = (start + i) % self.num_players
 
@@ -69,10 +71,10 @@ class Training:
                             log_probs.append(log_prob.detach())
                             values.append(value.detach())
 
-                        env.step(action)
+                        self.env.step(action)
 
                 for _ in range(T):
-                    rewards.append(env.players_points[self.player_learning])
+                    rewards.append(self.env.players_points[self.player_learning])
 
         return {
             'states': torch.stack(states),
@@ -114,9 +116,6 @@ class Training:
         advantages, returns = self.compute_advantages(rewards, values)
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-12)
 
-        print(f"{advantages.shape=}")
-        print(f"{returns.shape=}")
-
         dataset = torch.utils.data.TensorDataset(states, action_masks, actions, log_probs_old, returns, advantages)
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.minibatch_size, shuffle=True)
 
@@ -153,44 +152,37 @@ class Training:
 
         return value_loss.item(), loss.item()
 
-    def training_loop(self, iterations):
+    def training_loop(self, iterations, path):
 
-        print("Start train loop!")
+        value_losses = []
+        losses = []
+
         batch = self.collect_batch()
-        print(f"{batch['states'].shape=}")
-        print(f"{batch['action_masks'].shape=}")
-        print(f"{batch['actions'].shape=}")
-        print(f"{batch['rewards'].shape=}")
-        print(f"{batch['log_probs'].shape=}")
-        print(f"{batch['values'].shape=}")
-        self.ppo_update(batch)
-        print("End train loop!")
 
-        # value_losses = []
-        # losses = []
+        pbar = trange(iterations)
+        for _ in pbar:
+            value_loss, loss = self.ppo_update(batch)
+            pbar.set_postfix({
+                "loss": f"{loss:.4f}",
+                "value_loss": f"{value_loss:.4f}"
+            })
+            value_losses.append(value_loss)
+            losses.append(loss)
 
-        # pbar = trange(iterations)
-        # for _ in pbar:
-        #    batch = self.collect_batch()
-        #    value_loss, loss = self.ppo_update(batch)
-        #    pbar.set_postfix({
-        #        "loss": f"{loss:.4f}",
-        #        "value_loss": f"{value_loss:.4f}"
-        #    })
-        #    value_losses.append(value_loss)
-        #    losses.append(loss)
+        x = range(1, iterations+1)
+        fig, axs = plt.subplots(1, 2, figsize=(10, 4))  # (rows, columns)
 
-        # x = range(1, iterations+1)
-        # fig, axs = plt.subplots(1, 2, figsize=(10, 4))  # (rows, columns)
+        axs[0].plot(x, losses)
+        axs[0].set_title("Losses")
 
-        # First plot (on the left)
-        # axs[0].plot(x, losses)
-        # axs[0].set_title("Losses")
+        axs[1].plot(x, value_losses)
+        axs[1].set_title("Value Losses")
 
-        # Second plot (on the right)
-        # axs[1].plot(x, value_losses)
-        # axs[1].set_title("Value Losses")
+        plt.tight_layout()
+        plt.show()
+        plt.savefig(os.path.join(path, "losses.png"))  # save as PNG
+        plt.close()  # optional: closes the figure
 
-        # Improve layout
-        # plt.tight_layout()
-        # plt.show()
+        torch.save(self.policies[self.player_learning].state_dict(), os.path.join(path, "model.pth"))
+        np.save(os.path.join(path, "value-losses.npy"), np.array([]))
+        np.save(os.path.join(path, "losses.npy"), np.array([]))

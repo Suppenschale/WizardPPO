@@ -2,7 +2,7 @@ env:
   num_players: 4
   seed: 16112004
   random: False
-  debug_print: True
+  debug_print: False
 
 sim:
   iter: 10_000
@@ -14,7 +14,7 @@ nn:
   hidden_layer_each: 256
 
 train:
-  game_iterations: 2 # 48
+  game_iterations: 48
   gamma: 0.995
   lambda: 0.95
   epochs: 4
