@@ -19,26 +19,31 @@ class Card:
             object.__setattr__(self, "suit", Suit.NO_SUIT)
 
     def is_higher_than(self, other: Card, trump: Optional[Card]):
-        # self Wizard -> wins if other no Wizard
-        if self.rank == WIZARD:
-            return self.rank > other.rank
 
         # other Wizard -> loose
         if other.rank == WIZARD:
             return False
 
+        # self Wizard  -> wins (other.rank != WIZARD)
+        if self.rank == WIZARD:
+            return True
+
         # self Jester -> loose
         if self.rank == JESTER:
             return False
 
+        # other Jester -> win (self.rank != JESTER)
+        if other.rank == JESTER:
+            return True
+
         # self trump and other no trump -> wins
         # but trump is no Jester
-        if trump and self.suit == trump.suit and other.suit != trump.suit and trump.rank != JESTER:
+        if self.suit == trump.suit and other.suit != trump.suit and trump.rank != JESTER:
             return True
 
         # self no trump and other trump -> loose
         # but trump is no Jester
-        if trump and self.suit != trump.suit and other.suit == trump.suit and trump.rank != JESTER:
+        if self.suit != trump.suit and other.suit == trump.suit and trump.rank != JESTER:
             return False
 
         # different suits -> loose
