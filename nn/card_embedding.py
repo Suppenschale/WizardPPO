@@ -7,23 +7,16 @@ from env.card import Card
 
 class CardEmbedding(nn.Module):
 
-    def __init__(self) -> None:
+    def __init__(self, emb_dim: int) -> None:
         super().__init__()
 
-        with open("parameter.yaml", "r") as f:
-            config = yaml.safe_load(f)
-
-        self.seed = config["env"]["seed"]
-
-        torch.manual_seed(self.seed)
-        self.emb_dim = config["embedding"]["emb_dim"]
-
+        self.emb_dim = emb_dim
         self.rank_emb = nn.Embedding(15, self.emb_dim)
         self.suit_emb = nn.Embedding(5, self.emb_dim)
 
-    def forward(self, card: Card):
-        rank_id = torch.tensor([card.rank], dtype=torch.long)
-        suit_id = torch.tensor([card.suit.value - 1], dtype=torch.long)
+    def forward(self, rank: torch.tensor, suit: torch.tensor):
+        rank_id = rank
+        suit_id = suit - 1
 
         r = self.rank_emb(rank_id)
         s = self.suit_emb(suit_id)
