@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from scipy.stats import rankdata
 from typing import Optional
+import torch.nn.functional as F
 
 import yaml
 from itertools import product
@@ -17,14 +18,22 @@ SUITS = [suit for suit in Suit]
 DECK = [Card(rank, suit) for rank, suit in product(RANKS, SUITS) if suit != Suit.NO_SUIT]
 DUMMY_CARD = Card(-1, Suit.NO_SUIT)
 
+JESTER_POS = 52
+WIZARD_POS = 53
+
 
 def one_hot_encode_cards(cards: list[Card]) -> np.array:
-    one_hot = np.zeros(60)
+    one_hot = np.zeros(54)
     suit_to_index = {s: i for i, s in enumerate(SUITS)}
 
     for card in cards:
-        idx = suit_to_index[card.suit] * 15 + card.rank
-        one_hot[idx] = 1
+        if card.rank == JESTER:
+            one_hot[JESTER_POS] = 1
+        elif card.rank == WIZARD:
+            one_hot[WIZARD_POS] = 1
+        else:
+            idx = (suit_to_index[card.suit]) * 13 + card.rank - 1
+            one_hot[idx] = 1
     return one_hot
 
 
@@ -45,7 +54,6 @@ class Environment:
 
         self.emb_dim = self.config["embedding"]["emb_dim"]
         self.deck_size = self.config["env"]["deck_size"]
-        self.embedding = CardEmbedding()
 
         if self.num_players < 2 or 60 % self.num_players != 0:
             raise ValueError(f"Wizard can not be played with {self.num_players} players")
@@ -239,10 +247,10 @@ class Environment:
 
         # Compute card
         # Jester
-        if card_idx == 52:
+        if card_idx == JESTER_POS:
             card = Card(JESTER, SUITS[4])
         # Wizard
-        elif card_idx == 53:
+        elif card_idx == WIZARD_POS:
             card = Card(WIZARD, SUITS[4])
         # Number card
         else:
@@ -392,52 +400,59 @@ class Environment:
 
         return cards_higher_than_high_card.difference(self.cards_played).difference(self.players_hand[self.cur_player])
 
-    def one_hot_encode_trump_color(self) -> np.array:
-        one_hot = np.zeros(5)
-
-        if self.trump.rank > -1:
-            one_hot[SUITS.index(self.trump.suit)] = 1
-        else:
-            one_hot[4] = 1
-        return one_hot
-
     def get_action_mask(self) -> torch.Tensor:
         return torch.from_numpy(one_hot_encode_cards(self.actions())).float()
 
-    def cards_embedding(self, cards: list[Card]) -> torch.Tensor:
-        cards_emb = torch.zeros(self.deck_size, self.emb_dim)
-        for i, card in enumerate(cards):
-            cards_emb[i] = self.embedding(card)
-        return cards_emb
+    def get_state_vector(self) -> torch.tensor:
+        hand = self.players_hand[self.cur_player]
+        card_left = len(self.players_hand[self.cur_player])
+        num_of_wizards = sum([1 for card in self.players_hand[self.cur_player] if card.rank == WIZARD])
+        num_of_jesters = sum([1 for card in self.players_hand[self.cur_player] if card.rank == JESTER])
+        num_of_trumps = sum([1 for card in self.players_hand[self.cur_player] if
+                             card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])
 
-    def get_state_vector(self) -> torch.Tensor:
-        hand = self.cards_embedding(self.players_hand[self.cur_player])
-        card_left = [len(self.players_hand[self.cur_player])]
-        num_of_wizards = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == WIZARD])]
-        num_of_jesters = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == JESTER])]
-        num_of_trumps = [sum([1 for card in self.players_hand[self.cur_player] if
-                              card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
+        card_played_in_trick = self.cards_played_in_trick
+        players_left = self.num_players - self.player_counter - 1
+        cards_left = len(self.beat_current_high_card())
+        trump_color = self.trump.suit
 
-        card_played_in_trick = self.cards_embedding(self.cards_played_in_trick)
-        players_left = [self.num_players - self.player_counter - 1]
-        cards_left = [len(self.beat_current_high_card())]
-        trump_color = self.one_hot_encode_trump_color()
-
-        card_played = one_hot_encode_cards(self.cards_played)
-        wizards_played = [sum([1 for card in self.cards_played if card.rank == WIZARD])]
-        jesters_played = [sum([1 for card in self.cards_played if card.rank == JESTER])]
-        trump_played = [sum([1 for card in self.cards_played if
-                             card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
+        card_played = self.cards_played
+        wizards_played = sum([1 for card in self.cards_played if card.rank == WIZARD])
+        jesters_played = sum([1 for card in self.cards_played if card.rank == JESTER])
+        trump_played = sum([1 for card in self.cards_played if
+                            card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])
 
         cur_player = self.cur_player
-        tricks_left = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        tricks_left = self.players_bid[cur_player] - self.players_tricks[cur_player]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp1 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        tricks_left_opp1 = self.players_bid[cur_player] - self.players_tricks[cur_player]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp2 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        tricks_left_opp2 = self.players_bid[cur_player] - self.players_tricks[cur_player]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp3 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
+        tricks_left_opp3 = self.players_bid[cur_player] - self.players_tricks[cur_player]
 
-        state_vector = torch.cat([hand.flatten()])
+        def cards_to_tensor(cards, max_size):
+            tensor = torch.tensor([(card.rank, card.suit.value) for card in cards]).flatten()
+            return F.pad(tensor, (0, max_size * 2 - len(tensor)))
 
-        return state_vector.float()
+        state_tensor = torch.cat([
+            cards_to_tensor(hand, 15),
+            cards_to_tensor(card_played_in_trick, 4),
+            cards_to_tensor(card_played, 60),
+            torch.tensor([trump_color.value]),
+            torch.tensor([card_left,
+                          num_of_wizards,
+                          num_of_jesters,
+                          num_of_trumps,
+                          players_left,
+                          cards_left,
+                          wizards_played,
+                          jesters_played,
+                          trump_played,
+                          tricks_left,
+                          tricks_left_opp1,
+                          tricks_left_opp2,
+                          tricks_left_opp3]),
+        ])
+
+        return state_tensor
