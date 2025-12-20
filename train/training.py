@@ -1,78 +1,27 @@
-from queue import Empty
-
 import torch
 import torch.nn.functional as F
+import os
+from torch.utils.tensorboard import SummaryWriter
 import yaml
 import numpy as np
-import matplotlib
-
-matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-import torch.multiprocessing as mp
-import os
 from torch.optim import Optimizer
 from tqdm import tqdm, trange
 
 from env.bidding_heuristic import bidding_heuristic
-from nn.PPO_network import PPONetwork
+from nn.ppo_network import PPONetwork
 from env.environment import Environment
-
-
-def trajectory(policy, task_queue, result_queue):
-    with torch.no_grad():
-
-        while True:
-
-            try:
-                task_id = task_queue.get(timeout=1)
-            except Empty:
-                break
-            if task_id is None:
-                break
-
-            states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
-
-            env = Environment()
-
-            for r in range(1, 60 // env.num_players + 1):
-
-                env.start_round(r)
-
-                for player in range(env.num_players):
-                    env.bid(bidding_heuristic(env.players_hand[player], env.trump))
-
-                for _ in range(r):
-
-                    for player in range(env.num_players):
-                        state = env.get_state_vector()
-                        action_mask = env.get_action_mask()
-                        action, log_prob, value = policy.select_action(state, action_mask)
-
-                        states.append(state.cpu().detach().tolist())
-                        action_masks.append(action_mask)
-                        actions.append(action)
-                        log_probs.append(log_prob.cpu().detach().tolist())
-                        values.append(value.cpu().detach().tolist())
-
-                        env.step(action)
-
-                    for player in range(env.num_players):
-                        reward = env.get_reward(player)
-                        rewards.append(reward)
-
-            #print(env.players_points)
-            result_queue.put((states, action_masks, actions, rewards, log_probs, values))
 
 
 class Training:
 
-    def __init__(self, policy: PPONetwork, optimizer: Optimizer):
+    def __init__(self, policy: PPONetwork, optimizer: Optimizer, path : str):
         with open("parameter.yaml", "r") as f:
             config = yaml.safe_load(f)
 
         self.policy = policy
         self.optimizer = optimizer
-        self.num_iter = config["train"]["iter"]
+        self.game_iterations = config["train"]["game_iterations"]
         self.gamma = config["train"]["gamma"]
         self.lamb = config["train"]["lambda"]
         self.epochs = config["train"]["epochs"]
@@ -81,40 +30,63 @@ class Training:
         self.a1 = config["train"]["a1"]
         self.a2 = config["train"]["a2"]
         self.num_players = config["env"]["num_players"]
-        self.T = (60 // self.num_players) * (60 // self.num_players + 1) // 2
+        self.game_length = 60 // self.num_players
+        self.num_of_rounds = (self.game_length * (self.game_length + 1)) // 2
+
+        self.env = Environment()
+        self.policies = [PPONetwork() for _ in range(self.num_players)]
+
+        self.path = path
+        self.writer = SummaryWriter(log_dir=os.path.join(path, "board"))
+        self.step = 0
+
+        self.player_learning = 0
+        self.policies[self.player_learning] = policy
 
     def collect_batch(self):
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
-        task_queue = mp.Queue()
-        result_queue = mp.Queue()
+        for game in range(self.game_iterations):
+            self.env.reset()
+            # TODO Only relevant for testing
+            for cur_round in range(1, self.game_length + 1):
+                self.env.start_round(cur_round)
 
-        for i in range(self.num_iter):
-            task_queue.put(i)
+                for player in range(self.env.num_players):
+                    self.env.bid(bidding_heuristic(self.env.players_hand[player], self.env.trump))
 
-        processes = []
-        for i in range(8):
-            p = mp.Process(target=trajectory, args=(self.policy, task_queue, result_queue))
-            p.start()
-            processes.append(p)
+                for _ in range(cur_round):
 
-        counter = 0
-        while counter < self.num_iter:
-            try:
-                states_p, action_masks_p, actions_p, rewards_p, log_probs_p, values_p = result_queue.get(timeout=5)
-                states += states_p
-                action_masks += action_masks_p
-                actions += actions_p
-                rewards += rewards_p
-                log_probs += log_probs_p
-                values += values_p
-                counter += 1
-            except Empty:
-                continue
+                    start = self.env.get_start_player()
 
-        for p in processes:
-            p.join()
+                    for i in range(self.env.num_players):
+                        state = self.env.get_state_vector()
+                        action_mask = self.env.get_action_mask()
+
+                        player = (start + i) % self.num_players
+
+                        action, log_prob, value = self.policies[player].select_action(state, action_mask)
+
+                        if player == self.player_learning:
+                            states.append(state.detach())
+                            action_masks.append(action_mask)
+                            actions.append(action)
+                            log_probs.append(log_prob.detach())
+                            values.append(value.detach())
+
+                        self.env.step(action)
+
+                for _ in range(cur_round - 1):
+                    rewards.append(0)
+                rewards.append(self.env.players_points[self.player_learning])
+
+                for player in range(self.num_players):
+                    self.writer.add_scalar(tag=f"Reward/Player{player + 1}",
+                                           scalar_value=self.env.players_points[player],
+                                           global_step=self.step)
+
+                self.step += 1
 
         return {
             'states': torch.tensor(states),
@@ -130,14 +102,12 @@ class Training:
         returns = np.zeros(len(rewards))
         advantages = np.zeros(len(rewards))
 
-        for i in range(self.num_iter):
-            for player in reversed(range(self.num_players)):
-
+        for i in range(self.game_iterations):
+            for T in range(1, self.game_length + 1):
                 gae = 0
                 value_next = 0
-                for j in reversed(range(self.T)):
-                    t = (i * self.T + j) * self.num_players + player
-
+                for j in reversed(range(T)):
+                    t = i * self.num_of_rounds + (T - 1) * T // 2 + j
                     delta = rewards[t] + self.gamma * value_next - values[t]
                     gae = delta + self.gamma * self.lamb * gae
                     advantages[t] = gae
@@ -147,8 +117,6 @@ class Training:
         return torch.tensor(advantages, dtype=torch.float32), torch.tensor(returns, dtype=torch.float32)
 
     def ppo_update(self, batch):
-
-        self.policy.train()
 
         states = batch['states']
         action_masks = batch['action_masks']
@@ -202,26 +170,36 @@ class Training:
         losses = []
 
         pbar = trange(iterations)
-        for _ in pbar:
+        for i in pbar:
             batch = self.collect_batch()
             value_loss, loss = self.ppo_update(batch)
             pbar.set_postfix({
                 "loss": f"{loss:.4f}",
                 "value_loss": f"{value_loss:.4f}"
             })
+            self.writer.add_scalar(tag="Loss/Value", scalar_value=value_loss, global_step=i)
+            self.writer.add_scalar(tag="Loss/Policy", scalar_value=loss, global_step=i)
+            self.writer.flush()
             value_losses.append(value_loss)
             losses.append(loss)
 
         x = range(1, iterations + 1)
         fig, axs = plt.subplots(1, 2, figsize=(10, 4))
 
+        # First plot (on the left)
         axs[0].plot(x, losses)
         axs[0].set_title("Losses")
 
+        # Second plot (on the right)
         axs[1].plot(x, value_losses)
         axs[1].set_title("Value Losses")
 
+        # Improve layout
         plt.tight_layout()
         plt.show()
+        plt.savefig(os.path.join(self.path, "losses.png"))  # save as PNG
+        plt.close()  # optional: closes the figure
 
-        return value_losses, losses
+        torch.save(self.policies[self.player_learning].state_dict(), os.path.join(self.path, "model.pth"))
+        np.save(os.path.join(self.path, "value-losses.npy"), np.array([]))
+        np.save(os.path.join(self.path, "losses.npy"), np.array([]))

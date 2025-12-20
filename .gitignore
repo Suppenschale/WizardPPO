@@ -1,13 +1,16 @@
 # Ignore IDE files
 .idea/*
 */__pycache__/
-*xml
+*.xml
 
-# Ignore log files 
+# Ignore log files
 *.npy
 *.pth
 *.txt
+*.png
+log
 
-# Ignore main
+# Ingore python scripts
 main.py
+evaluate.py
 
