@@ -5,9 +5,9 @@ from typing import Optional
 
 from env.suit import Suit
 
-
 WIZARD = 14
 JESTER = 0
+
 
 @dataclass(frozen=True)
 class Card:
@@ -20,25 +20,25 @@ class Card:
 
     def is_higher_than(self, other: Card, trump: Optional[Card]):
         # self Wizard -> wins if other no Wizard
-        if self.rank == 14:
+        if self.rank == WIZARD:
             return self.rank > other.rank
 
         # other Wizard -> loose
-        if other.rank == 14:
+        if other.rank == WIZARD:
             return False
 
         # self Jester -> loose
-        if self.rank == 0:
+        if self.rank == JESTER:
             return False
 
         # self trump and other no trump -> wins
         # but trump is no Jester
-        if trump and self.suit == trump.suit and other.suit != trump.suit and trump.rank != 0:
+        if trump and self.suit == trump.suit and other.suit != trump.suit and trump.rank != JESTER:
             return True
 
         # self no trump and other trump -> loose
         # but trump is no Jester
-        if trump and self.suit != trump.suit and other.suit == trump.suit and trump.rank != 0:
+        if trump and self.suit != trump.suit and other.suit == trump.suit and trump.rank != JESTER:
             return False
 
         # different suits -> loose
