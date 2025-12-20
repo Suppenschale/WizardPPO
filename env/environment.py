@@ -9,6 +9,7 @@ from itertools import product
 from env.card import Card
 from env.card import JESTER, WIZARD
 from env.suit import Suit
+from nn.card_embedding import CardEmbedding
 
 RANKS = [rank for rank in range(0, 15)]
 SUITS = [suit for suit in Suit]
@@ -40,6 +41,10 @@ class Environment:
 
         self.num_players: int = self.config["env"]["num_players"]
         self.DEBUG_PRINT: bool = self.config["env"]["debug_print"]
+
+        self.emb_dim = self.config["embedding"]["emb_dim"]
+        self.deck_size = self.config["env"]["deck_size"]
+        self.embedding = CardEmbedding()
 
         if self.num_players < 2 or 60 % self.num_players != 0:
             raise ValueError(f"Wizard can not be played with {self.num_players} players")
@@ -174,7 +179,6 @@ class Environment:
             self.player_counter = 0
 
     def actions(self) -> list[Card]:
-
         # If no card was played or first card is Wizard or Jester -> play any card
         if not self.first_card or self.first_card.rank in [JESTER, WIZARD]:
             return self.players_hand[self.cur_player]
@@ -339,15 +343,21 @@ class Environment:
     def get_action_mask(self) -> torch.Tensor:
         return torch.from_numpy(one_hot_encode_cards(self.actions())).float()
 
+    def cards_embedding(self, cards: list[Card]) -> torch.Tensor:
+        cards_emb = torch.zeros(self.deck_size, self.emb_dim)
+        for i, card in enumerate(cards):
+            cards_emb[i] = self.embedding(card)
+        return cards_emb
+
     def get_state_vector(self) -> torch.Tensor:
-        hand = one_hot_encode_cards(self.players_hand[self.cur_player])
+        hand = self.cards_embedding(self.players_hand[self.cur_player])
         card_left = [len(self.players_hand[self.cur_player])]
         num_of_wizards = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == WIZARD])]
         num_of_jesters = [sum([1 for card in self.players_hand[self.cur_player] if card.rank == JESTER])]
         num_of_trumps = [sum([1 for card in self.players_hand[self.cur_player] if
                               card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])]
 
-        card_played_in_trick = one_hot_encode_cards(self.cards_played_in_trick)
+        card_played_in_trick = self.cards_embedding(self.cards_played_in_trick)
         players_left = [self.num_players - self.player_counter - 1]
         cards_left = [len(self.beat_current_high_card())]
         trump_color = self.one_hot_encode_trump_color()
@@ -367,22 +377,6 @@ class Environment:
         cur_player = (cur_player + 1) % self.num_players
         tricks_left_opp3 = [self.players_bid[cur_player] - self.players_tricks[cur_player]]
 
-        state_vector = np.concatenate([hand,
-                                       card_left,
-                                       num_of_wizards,
-                                       num_of_jesters,
-                                       num_of_trumps,
-                                       card_played_in_trick,
-                                       players_left,
-                                       cards_left,
-                                       trump_color,
-                                       card_played,
-                                       wizards_played,
-                                       jesters_played,
-                                       trump_played,
-                                       tricks_left,
-                                       tricks_left_opp1,
-                                       tricks_left_opp2,
-                                       tricks_left_opp3])
+        state_vector = torch.cat([hand.flatten()])
 
-        return torch.from_numpy(state_vector).float()
+        return state_vector.float()
