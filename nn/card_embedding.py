@@ -13,6 +13,9 @@ class CardEmbedding(nn.Module):
         with open("parameter.yaml", "r") as f:
             config = yaml.safe_load(f)
 
+        self.seed = config["env"]["seed"]
+
+        torch.manual_seed(self.seed)
         self.emb_dim = config["embedding"]["emb_dim"]
 
         self.rank_emb = nn.Embedding(15, self.emb_dim)
