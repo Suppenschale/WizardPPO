@@ -262,9 +262,6 @@ class Environment:
             print(f"Player {self.cur_player + 1} plays card      : {card}")
             print("")
 
-        if self.num_rounds == 2:
-            print("Here")
-
         # Remove card from players hand
         self.players_hand[self.cur_player].remove(card)
 
