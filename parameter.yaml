@@ -1,8 +1,9 @@
 env:
   num_players: 4
+  deck_size: 60
   seed: 16112004
   random: False
-  debug_print: False
+  debug_print: True
 
 sim:
   iter: 500
