@@ -3,19 +3,19 @@ env:
   deck_size: 60
   seed: 16112004
   random: False
-  debug_print: True
+  debug_print: False
 
 sim:
   iter: 500
   dir: "./data"
 
 nn:
-  input_layer: 198
+  input_layer: 1213
   hidden_layer_shared: 512
   hidden_layer_each: 256
 
 embedding:
-  emb_dim: 5
+  emb_dim: 15
 
 train:
   game_iterations: 48
