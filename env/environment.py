@@ -1,6 +1,5 @@
 import random
 import torch
-from scipy.stats import rankdata
 from typing import Optional
 import torch.nn.functional as F
 
@@ -10,7 +9,6 @@ from itertools import product
 from env.card import Card
 from env.card import JESTER, WIZARD
 from env.suit import Suit
-from nn.card_embedding import CardEmbedding
 
 RANKS = [rank for rank in range(0, 15)]
 SUITS = [suit for suit in Suit]
@@ -372,8 +370,7 @@ class Environment:
             # and played suit is different from first card suit...
             if card.suit != self.first_card.suit:
                 # then there must not be a suit in players hand
-                if {c for c in self.players_hand[self.cur_player] if c.suit == self.first_card.suit and c.rank not in
-                                                                     [JESTER, WIZARD]}:
+                if {c for c in self.players_hand[self.cur_player] if c.suit == self.first_card.suit and c.rank not in [JESTER, WIZARD]}:
                     return False
 
         return True

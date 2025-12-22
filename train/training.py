@@ -1,4 +1,7 @@
+import concurrent.futures
+import multiprocessing
 import time
+from functools import partial
 
 import torch
 import torch.nn.functional as F
@@ -12,6 +15,61 @@ from tqdm import tqdm, trange
 from env.bidding_heuristic import bidding_heuristic
 from nn.ppo_network import PPONetwork
 from env.environment import Environment
+
+
+def collect_batch(game_id, policies, player_learning):
+    import torch
+    from env.environment import Environment
+
+    print(f"Start game {game_id}")
+
+    states_local, action_masks_local, actions_local, rewards_local, log_probs_local, values_local \
+        = [], [], [], [], [], []
+
+    env = Environment()
+    env.start_game()
+    for cur_round in range(env.max_rounds):
+
+        for player in range(env.num_players):
+            env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+
+        for _ in range(env.num_rounds):
+
+            start = env.get_start_player()
+            for i in range(env.num_players):
+                state = env.get_state_vector()
+                action_mask = env.get_action_mask()
+
+                player = (start + i) % env.num_players
+
+                with torch.no_grad():
+                    action, log_prob, value = policies[player].select_action(state, action_mask)
+
+                if player == player_learning:
+                    states_local.append(state.detach())
+                    action_masks_local.append(action_mask)
+                    actions_local.append(action)
+                    log_probs_local.append(log_prob.detach())
+                    values_local.append(value.detach())
+
+                env.step(action)
+
+        for _ in range(cur_round):
+            rewards_local.append(0)
+        rewards_local.append(env.players_round_points_history[cur_round][player_learning])
+
+    rewards_local[-1] = env.players_game_points[0]
+
+    print(f"End game {game_id}")
+
+    return {
+        'states': states_local,
+        'action_masks': action_masks_local,
+        'actions': actions_local,
+        'rewards': rewards_local,
+        'log_probs': log_probs_local,
+        'values': values_local
+    }
 
 
 class Training:
@@ -31,10 +89,10 @@ class Training:
         self.a1 = config["train"]["a1"]
         self.a2 = config["train"]["a2"]
         self.num_players = config["env"]["num_players"]
-        self.game_length = 60 // self.num_players
+        self.deck_size = config["env"]["deck_size"]
+        self.game_length = self.deck_size // self.num_players
         self.num_of_rounds = (self.game_length * (self.game_length + 1)) // 2
 
-        self.env = Environment()
         self.policies = [PPONetwork() for _ in range(self.num_players)]
 
         self.path = path
@@ -44,95 +102,45 @@ class Training:
         self.player_learning = 0
         self.policies[self.player_learning] = policy
 
-    def collect_batch(self):
+    def collect_batch_parallel(self):
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
-        for game in range(self.game_iterations):
-            print(f"{game=}")
-            start_time = time.perf_counter()
-            counter = 0
-            self.env.start_game()
-            for cur_round in range(self.env.max_rounds):
+        worker_func = partial(collect_batch, policies=self.policies, player_learning=self.player_learning)
 
-                for player in range(self.env.num_players):
-                    self.env.bid(bidding_heuristic(self.env.players_hand[player], self.env.trump))
+        num_workers = min(self.game_iterations, multiprocessing.cpu_count())
+        print(f"{num_workers=}")
 
-                for _ in range(self.env.num_rounds):
+        with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executors:
+            future_to_game = {executors.submit(worker_func, game): game for game in range(self.game_iterations)}
 
-                    print(f"\ttrick{counter}")
-                    start_time_trick = time.perf_counter()
-                    counter += 1
-                    start = self.env.get_start_player()
+            for future in concurrent.futures.as_completed(future_to_game):
+                try:
+                    result = future.result()
+                    states.extend(result['states'])
+                    action_masks.extend(result['action_masks'])
+                    actions.extend(result['actions'])
+                    rewards.extend(result['rewards'])
+                    log_probs.extend(result['log_probs'])
+                    values.extend(result['values'])
 
-                    sum_time = 0
-
-                    for i in range(self.env.num_players):
-                        print(f"\t\tget state : ", end='')
-                        start_fine = time.perf_counter()
-                        state = self.env.get_state_vector()
-                        diff = time.perf_counter()-start_fine
-                        sum_time += diff
-                        print(f"({diff}s)")
-                        print(f"\t\tget action_mask : ", end='')
-                        start_fine = time.perf_counter()
-                        action_mask = self.env.get_action_mask()
-                        diff = time.perf_counter()-start_fine
-                        sum_time += diff
-                        print(f"({diff}s)")
-
-                        player = (start + i) % self.num_players
-
-                        print(f"\t\tselect action : ", end='')
-                        start_fine = time.perf_counter()
-                        action, log_prob, value = self.policies[player].select_action(state, action_mask)
-                        diff = time.perf_counter()-start_fine
-                        sum_time += diff
-                        print(f"({diff}s)")
-
-                        if player == self.player_learning:
-                            states.append(state.detach())
-                            action_masks.append(action_mask)
-                            actions.append(action)
-                            log_probs.append(log_prob.detach())
-                            values.append(value.detach())
-
-                        print(f"\t\tstep: ", end='')
-                        self.env.step(action)
-                        diff = time.perf_counter()-start_fine
-                        sum_time += diff
-                        print(f"({diff}s)")
-
-                    print(f"\t({time.perf_counter() - start_time_trick}s / {sum_time}s)")
-
-                for _ in range(cur_round):
-                    rewards.append(0)
-                rewards.append(self.env.players_round_points_history[cur_round][self.player_learning])
-
-                for player in range(self.num_players):
-                    self.writer.add_scalar(tag=f"Reward/Player{player + 1}",
-                                           scalar_value=self.env.players_points[player],
-                                           global_step=self.step)
-
-                self.step += 1
-
-            rewards[-1] = self.env.players_game_points[0]
-            print(f"({(time.perf_counter() - start_time)}s)")
+                except Exception as e:
+                    print(f"Game {future_to_game[future]} generated an exception: {e}")
 
         return {
             'states': torch.cat(states),
             'action_masks': torch.cat(action_masks),
-            'actions': torch.tensor(actions, dtype=torch.long),
+            'actions': torch.tensor(actions),
             'rewards': torch.tensor(rewards),
-            'log_probs': torch.tensor(log_probs),
-            'values': torch.tensor(values).squeeze()
+            'log_probs': torch.cat(log_probs),
+            'values': torch.cat(values).squeeze(-1)
         }
 
     def compute_advantages(self, rewards, values):
 
         returns = [0 for _ in range(len(rewards))]
         advantages = [0 for _ in range(len(rewards))]
-        T = self.env.max_rounds * (self.env.max_rounds + 1) // 2
+        T = self.num_of_rounds
 
         for n in range(self.game_iterations):
             gae = 0
@@ -168,7 +176,6 @@ class Training:
 
         for _ in range(self.epochs):
             for mb_states, mb_action_masks, mb_actions, mb_log_probs_old, mb_returns, mb_advantages in loader:
-
                 value, probs = self.policy(mb_states, mb_action_masks)
 
                 dist = torch.distributions.Categorical(probs)
@@ -197,10 +204,18 @@ class Training:
         value_losses = []
         losses = []
 
-        batch = self.collect_batch()
-        value_loss, loss = self.ppo_update(batch)
+        start_time = time.perf_counter()
+        batch = self.collect_batch_parallel()
+        print(f"{time.perf_counter()-start_time}")
 
+        start_time = time.perf_counter()
+        for game in range(self.game_iterations):
+            collect_batch(game, self.policies, self.player_learning)
+        print(f"{time.perf_counter()-start_time}")
+        # value_loss, loss = self.ppo_update(batch)
 
+        for k, v in batch.items():
+            print(f"{k} : {v.shape}")
 
         return
 
