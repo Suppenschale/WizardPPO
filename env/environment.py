@@ -1,5 +1,4 @@
 import random
-import numpy as np
 import torch
 from scipy.stats import rankdata
 from typing import Optional
@@ -22,8 +21,8 @@ JESTER_POS = 52
 WIZARD_POS = 53
 
 
-def one_hot_encode_cards(cards: list[Card]) -> np.array:
-    one_hot = np.zeros(54)
+def one_hot_encode_cards(cards: list[Card]) -> list:
+    one_hot = [0 for _ in range(54)]
     suit_to_index = {s: i for i, s in enumerate(SUITS)}
 
     for card in cards:
@@ -401,7 +400,8 @@ class Environment:
         return cards_higher_than_high_card.difference(self.cards_played).difference(self.players_hand[self.cur_player])
 
     def get_action_mask(self) -> torch.Tensor:
-        return torch.from_numpy(one_hot_encode_cards(self.actions())).float()
+        # add batch dim (1, 54)
+        return torch.tensor(one_hot_encode_cards(self.actions())).type(torch.long).unsqueeze(0)
 
     def get_state_vector(self) -> torch.tensor:
         hand = self.players_hand[self.cur_player]
@@ -455,4 +455,4 @@ class Environment:
                           tricks_left_opp3]),
         ])
 
-        return state_tensor
+        return state_tensor.type(torch.long).unsqueeze(0)  # add batch dim (1, 172)
