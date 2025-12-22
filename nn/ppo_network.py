@@ -49,18 +49,18 @@ class PPONetwork(nn.Module):
         trick_embedding, trick_mask = self.embed_cards(trick)
         history_embedding, history_mask = self.embed_cards(history)
 
-        trump_color_embedding = self.card_embedding.suit_emb(trump_color - 1)
+        trump_color_embedding = self.card_embedding(torch.zeros_like(trump_color), trump_color, trump=True)
 
         hand_att = self.hand_encoder(hand_embedding, hand_mask)
         trick_att = self.trick_encoder(trick_embedding, trick_mask)
         history_att = self.trick_encoder(history_embedding, history_mask)
 
-        shared = torch.cat([                          # (batch_size, 1213)
-            hand_att.flatten(start_dim=1),                  # (batch_size, 15 * emb_dim)    = (batch_size, 225)
-            trick_att.flatten(start_dim=1),                 # (batch_size,  4 * emb_dim)    = (batch_size,  60)
-            history_att.flatten(start_dim=1),               # (batch_size, 60 * emb_dim)    = (batch_size, 900)
-            trump_color_embedding.flatten(start_dim=1),     # (batch_size,  1 * emb_dim)    = (batch_size,  15)
-            meta_info                                       # (batch_size, 13)              = (batch_size,  13)
+        shared = torch.cat([                         # (batch_size, 1213)
+            hand_att.flatten(start_dim=1),                  # (batch_size,   15 * emb_dim)  = (batch_size, 225)
+            trick_att.flatten(start_dim=1),                 # (batch_size,    4 * emb_dim)  = (batch_size,  60)
+            history_att.flatten(start_dim=1),               # (batch_size,   60 * emb_dim)  = (batch_size, 900)
+            trump_color_embedding.flatten(start_dim=1),     # (batch_size,    1 * emb_dim)  = (batch_size,  15)
+            meta_info                                       # (batch_size,    3)            = (batch_size,  13)
         ], dim=1)
 
         shared = self.shared(shared)
@@ -83,6 +83,7 @@ class PPONetwork(nn.Module):
         max_size = cards.shape[1] // 2
 
         cards = cards.view(batch_size, max_size, 2)
+
         ranks = cards[..., 0]
         suits = cards[..., 1]
 
