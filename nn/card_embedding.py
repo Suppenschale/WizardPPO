@@ -14,10 +14,11 @@ class CardEmbedding(nn.Module):
         self.rank_emb = nn.Embedding(15, self.emb_dim)
         self.suit_emb = nn.Embedding(5, self.emb_dim)
 
-    def forward(self, rank: torch.tensor, suit: torch.tensor):
+    def forward(self, rank: torch.tensor, suit: torch.tensor, trump=False):
         rank_id = rank
         suit_id = suit - 1
 
         r = self.rank_emb(rank_id)
         s = self.suit_emb(suit_id)
-        return r + s
+
+        return r + s if not trump else s
