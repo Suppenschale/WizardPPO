@@ -1,9 +1,10 @@
+import time
+
 import torch
 import torch.nn.functional as F
 import os
 from torch.utils.tensorboard import SummaryWriter
 import yaml
-import numpy as np
 import matplotlib.pyplot as plt
 from torch.optim import Optimizer
 from tqdm import tqdm, trange
@@ -15,7 +16,7 @@ from env.environment import Environment
 
 class Training:
 
-    def __init__(self, policy: PPONetwork, optimizer: Optimizer, path : str):
+    def __init__(self, policy: PPONetwork, optimizer: Optimizer, path: str):
         with open("parameter.yaml", "r") as f:
             config = yaml.safe_load(f)
 
@@ -48,25 +49,46 @@ class Training:
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
         for game in range(self.game_iterations):
-            self.env.reset()
-            # TODO Only relevant for testing
-            for cur_round in range(1, self.game_length + 1):
-                self.env.start_round(cur_round)
+            print(f"{game=}")
+            start_time = time.perf_counter()
+            counter = 0
+            self.env.start_game()
+            for cur_round in range(self.env.max_rounds):
 
                 for player in range(self.env.num_players):
                     self.env.bid(bidding_heuristic(self.env.players_hand[player], self.env.trump))
 
-                for _ in range(cur_round):
+                for _ in range(self.env.num_rounds):
 
+                    print(f"\ttrick{counter}")
+                    start_time_trick = time.perf_counter()
+                    counter += 1
                     start = self.env.get_start_player()
 
+                    sum_time = 0
+
                     for i in range(self.env.num_players):
+                        print(f"\t\tget state : ", end='')
+                        start_fine = time.perf_counter()
                         state = self.env.get_state_vector()
+                        diff = time.perf_counter()-start_fine
+                        sum_time += diff
+                        print(f"({diff}s)")
+                        print(f"\t\tget action_mask : ", end='')
+                        start_fine = time.perf_counter()
                         action_mask = self.env.get_action_mask()
+                        diff = time.perf_counter()-start_fine
+                        sum_time += diff
+                        print(f"({diff}s)")
 
                         player = (start + i) % self.num_players
 
+                        print(f"\t\tselect action : ", end='')
+                        start_fine = time.perf_counter()
                         action, log_prob, value = self.policies[player].select_action(state, action_mask)
+                        diff = time.perf_counter()-start_fine
+                        sum_time += diff
+                        print(f"({diff}s)")
 
                         if player == self.player_learning:
                             states.append(state.detach())
@@ -75,11 +97,17 @@ class Training:
                             log_probs.append(log_prob.detach())
                             values.append(value.detach())
 
+                        print(f"\t\tstep: ", end='')
                         self.env.step(action)
+                        diff = time.perf_counter()-start_fine
+                        sum_time += diff
+                        print(f"({diff}s)")
 
-                for _ in range(cur_round - 1):
+                    print(f"\t({time.perf_counter() - start_time_trick}s / {sum_time}s)")
+
+                for _ in range(cur_round):
                     rewards.append(0)
-                rewards.append(self.env.players_points[self.player_learning])
+                rewards.append(self.env.players_round_points_history[cur_round][self.player_learning])
 
                 for player in range(self.num_players):
                     self.writer.add_scalar(tag=f"Reward/Player{player + 1}",
@@ -88,9 +116,12 @@ class Training:
 
                 self.step += 1
 
+            rewards[-1] = self.env.players_game_points[0]
+            print(f"({(time.perf_counter() - start_time)}s)")
+
         return {
-            'states': torch.tensor(states),
-            'action_masks': torch.stack(action_masks),
+            'states': torch.cat(states),
+            'action_masks': torch.cat(action_masks),
             'actions': torch.tensor(actions, dtype=torch.long),
             'rewards': torch.tensor(rewards),
             'log_probs': torch.tensor(log_probs),
@@ -99,20 +130,20 @@ class Training:
 
     def compute_advantages(self, rewards, values):
 
-        returns = np.zeros(len(rewards))
-        advantages = np.zeros(len(rewards))
+        returns = [0 for _ in range(len(rewards))]
+        advantages = [0 for _ in range(len(rewards))]
+        T = self.env.max_rounds * (self.env.max_rounds + 1) // 2
 
-        for i in range(self.game_iterations):
-            for T in range(1, self.game_length + 1):
-                gae = 0
-                value_next = 0
-                for j in reversed(range(T)):
-                    t = i * self.num_of_rounds + (T - 1) * T // 2 + j
-                    delta = rewards[t] + self.gamma * value_next - values[t]
-                    gae = delta + self.gamma * self.lamb * gae
-                    advantages[t] = gae
-                    value_next = values[t]
-                    returns[t] = gae + values[t]
+        for n in range(self.game_iterations):
+            gae = 0
+            value_next = 0
+            for i in reversed(range(T)):
+                t = n * T + i
+                delta = rewards[t] + self.gamma * value_next - values[t]
+                gae = delta + self.gamma * self.lamb * gae
+                advantages[t] = gae
+                value_next = values[t]
+                returns[t] = gae + values[t]
 
         return torch.tensor(advantages, dtype=torch.float32), torch.tensor(returns, dtype=torch.float32)
 
@@ -129,20 +160,17 @@ class Training:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-12)
 
         dataset = torch.utils.data.TensorDataset(states, action_masks, actions, log_probs_old, returns, advantages)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=self.minibatch_size, shuffle=True)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=self.minibatch_size, shuffle=False)
 
         value_loss, loss = 0, 0
 
+        # torch.autograd.set_detect_anomaly(True)
+
         for _ in range(self.epochs):
             for mb_states, mb_action_masks, mb_actions, mb_log_probs_old, mb_returns, mb_advantages in loader:
-                mb_states = mb_states
-                mb_action_masks = mb_action_masks
-                mb_actions = mb_actions
-                mb_log_probs_old = mb_log_probs_old
-                mb_returns = mb_returns
-                mb_advantages = mb_advantages
 
                 value, probs = self.policy(mb_states, mb_action_masks)
+
                 dist = torch.distributions.Categorical(probs)
                 entropy = dist.entropy().mean()
                 log_probs_new = dist.log_prob(mb_actions)
@@ -168,6 +196,13 @@ class Training:
 
         value_losses = []
         losses = []
+
+        batch = self.collect_batch()
+        value_loss, loss = self.ppo_update(batch)
+
+
+
+        return
 
         pbar = trange(iterations)
         for i in pbar:
