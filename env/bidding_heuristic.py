@@ -1,5 +1,3 @@
-import numpy as np
-
 from env.card import Card
 from env.environment import JESTER
 from env.environment import WIZARD
@@ -26,4 +24,4 @@ def bidding_heuristic(hand: list[Card], trump: Card) -> int:
         if not trump and card.rank >= 10 and card.rank != WIZARD:
             bid += 1
 
-    return np.clip(bid , 0, len(hand)) #+ np.random.randint(0, 0)
+    return min(max(bid, 0), len(hand)) #+ np.random.randint(0, 0)
