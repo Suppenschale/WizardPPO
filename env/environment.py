@@ -48,6 +48,8 @@ class Environment:
 
         self.num_players: int = self.config["env"]["num_players"]
         self.DEBUG_PRINT: bool = self.config["env"]["debug_print"]
+        self.DEBUG_ROUND: bool = self.config["env"]["debug_round"]
+        self.ROUND: int = self.config["env"]["round"]
 
         self.emb_dim = self.config["embedding"]["emb_dim"]
         self.deck_size = self.config["env"]["deck_size"]
@@ -173,18 +175,18 @@ class Environment:
             # Last round, set dummy trump
             self.trump = DUMMY_CARD
 
-        if self.DEBUG_PRINT:
+        if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
             print(f"Start of round {self.num_rounds}")
             print(f"Trump card: {self.trump}")
 
         # If Wizard is trump chose a random color
         if self.trump.rank == WIZARD:
             self.trump = Card(-1, self.rng.choice(SUITS))
-            if self.DEBUG_PRINT:
+        if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
                 print(f"Color chosen : {self.trump.suit}")
                 print(f"Trump card: {self.trump}")
 
-        if self.DEBUG_PRINT:
+        if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
             print("")
 
     def bid(self, bid: int) -> None:
@@ -261,7 +263,7 @@ class Environment:
         if not self.legal_move(card):
             raise ValueError("Card can not be played")
 
-        if self.DEBUG_PRINT:
+        if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
             print(f"Player {self.cur_player + 1} hand cards      : {self.players_hand[self.cur_player]}")
             print(f"Player {self.cur_player + 1} allowed actions : {self.actions()}")
             print(f"Player {self.cur_player + 1} plays card      : {card}")
@@ -304,7 +306,7 @@ class Environment:
             self.first_card = None
             self.cards_played_in_trick = []
 
-            if self.DEBUG_PRINT:
+            if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
                 print(f"Trick {self.round_counter} of {self.num_rounds} is over")
                 print(f"    Player {self.high_player + 1} has won the trick")
                 print("")
@@ -328,7 +330,7 @@ class Environment:
                 self.players_round_points_history[self.num_rounds - 1].append(points)
                 self.players_points[i] = points
 
-            if self.DEBUG_PRINT:
+            if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
                 print(f"Round is over")
                 print("")
                 print("Round points: ")
@@ -342,7 +344,7 @@ class Environment:
             else:
                 self.game_is_running = False
 
-                if self.DEBUG_PRINT:
+                if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
                     print(f"Game is over")
                     print("")
                     print("Round histories:")
