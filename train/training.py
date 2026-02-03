@@ -22,28 +22,6 @@ from nn.ppo_network import PPONetwork
 from env.environment import Environment
 
 
-def rank_rewards_with_ties(points):
-    rewards_by_rank = [1, 0.5, -0.5, -1]
-
-    rewards = [0] * len(points)
-    sorted_indices = sorted(range(len(points)),
-                            key=lambda i: points[i],
-                            reverse=True)
-
-    i = 0
-    while i < len(points):
-        j = i
-        while j < len(points) and points[sorted_indices[j]] == points[sorted_indices[i]]:
-            j += 1
-
-        avg_reward = sum(rewards_by_rank[i:j]) / (j - i)
-        for k in range(i, j):
-            rewards[sorted_indices[k]] = avg_reward
-
-        i = j
-
-    return rewards
-
 def collect_batch(game_id, policies, player_learning):
     import torch
     from env.environment import Environment
@@ -52,43 +30,36 @@ def collect_batch(game_id, policies, player_learning):
         = [], [], [], [], [], []
 
     env = Environment()
-    env.start_game()
-    for cur_round in range(env.max_rounds):
+    cur_round = 5
+    env.start_round(cur_round)
 
-        for player in range(env.num_players):
-            env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+    for player in range(env.num_players):
+        env.bid(bidding_heuristic(env.players_hand[player], env.trump))
 
-        for _ in range(env.num_rounds):
+    for _ in range(env.num_rounds):
 
-            start = env.get_start_player()
-            for i in range(env.num_players):
-                state = env.get_state_vector()
-                action_mask = env.get_action_mask()
+        start = env.get_start_player()
+        for i in range(env.num_players):
+            state = env.get_state_vector()
+            action_mask = env.get_action_mask()
 
-                player = (start + i) % env.num_players
+            player = (start + i) % env.num_players
 
-                with torch.no_grad():
-                    action, log_prob, value = policies[player].select_action(state, action_mask)
+            with torch.no_grad():
+                action, log_prob, value = policies[player].select_action(state, action_mask)
 
-                if player == player_learning:
-                    states_local.append(state.detach())
-                    action_masks_local.append(action_mask)
-                    actions_local.append(action)
-                    log_probs_local.append(log_prob.detach())
-                    values_local.append(value.detach())
+            if player == player_learning:
+                states_local.append(state.detach())
+                action_masks_local.append(action_mask)
+                actions_local.append(action)
+                log_probs_local.append(log_prob.detach())
+                values_local.append(value.detach())
 
-                env.step(action)
+            env.step(action)
 
-        for _ in range(cur_round):
-            rewards_local.append(0)
-        rewards_local.append(env.players_round_points_history[cur_round][player_learning])
-
-    rewards_local[-1] = env.players_game_points[player_learning]
-
-    #rank_awards = rank_rewards_with_ties(env.players_game_points)
-
-    #for i in range(env.max_rounds * (env.max_rounds + 1) // 2):
-    #    rewards_local[i] += rank_awards[player_learning]
+    for _ in range(cur_round - 1):
+        rewards_local.append(0)
+    rewards_local.append(env.players_points[player_learning])
 
     return {
         'states': states_local,
@@ -98,6 +69,7 @@ def collect_batch(game_id, policies, player_learning):
         'log_probs': log_probs_local,
         'values': values_local
     }
+
 
 class Training:
 
@@ -121,6 +93,8 @@ class Training:
         self.num_of_rounds = (self.game_length * (self.game_length + 1)) // 2
 
         self.policies = [PPONetwork() for _ in range(self.num_players)]
+
+        self.DEBUG_PRINT: bool = config["env"]["debug_print"]
 
         self.path = path
         self.writer = SummaryWriter(log_dir=os.path.join(path, "board"))
@@ -171,7 +145,7 @@ class Training:
 
         returns = [0 for _ in range(len(rewards))]
         advantages = [0 for _ in range(len(rewards))]
-        T = self.num_of_rounds
+        T = 5  # self.num_of_rounds
 
         for n in range(self.game_iterations):
             gae = 0
@@ -186,11 +160,6 @@ class Training:
 
         return torch.tensor(advantages, dtype=torch.float32), torch.tensor(returns, dtype=torch.float32)
 
-
-    def collect_gymnasium_batches(self):
-        pass
-
-
     def ppo_update(self, batch):
 
         states = batch['states']
@@ -201,19 +170,6 @@ class Training:
         rewards = batch['rewards']
 
         advantages, returns = self.compute_advantages(rewards, values)
-
-        print("Advantages")
-        for a in advantages:
-            print(a)
-
-        print("Returns")
-        for r in returns:
-            print(r)
-
-        print("Rewards")
-        for r in rewards:
-            print(r)
-
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-12)
 
         dataset = torch.utils.data.TensorDataset(states, action_masks, actions, log_probs_old, returns, advantages)
@@ -224,8 +180,9 @@ class Training:
         # torch.autograd.set_detect_anomaly(True)
 
         for i in range(self.epochs):
-            print(f"{i+1}/{self.epochs}")
-            for j, (mb_states, mb_action_masks, mb_actions, mb_log_probs_old, mb_returns, mb_advantages) in enumerate(loader):
+            #print(f"{i + 1}/{self.epochs}")
+            for j, (mb_states, mb_action_masks, mb_actions, mb_log_probs_old, mb_returns, mb_advantages) in enumerate(
+                    loader):
                 value, probs = self.policy(mb_states, mb_action_masks)
 
                 dist = torch.distributions.Categorical(probs)
@@ -265,36 +222,38 @@ class Training:
 
     def evaluate(self):
         env = Environment()
-        env.start_game()
+        cur_round = 5
+        env.start_round(cur_round)
         self.policy.eval()
-        for cur_round in range(env.max_rounds):
 
-            for player in range(env.num_players):
-                env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+        for player in range(env.num_players):
+            env.bid(bidding_heuristic(env.players_hand[player], env.trump))
 
-            for _ in range(env.num_rounds):
+        for _ in range(env.num_rounds):
 
-                start = env.get_start_player()
-                for i in range(env.num_players):
-                    state = env.get_state_vector()
-                    action_mask = env.get_action_mask()
+            start = env.get_start_player()
+            for i in range(env.num_players):
+                state = env.get_state_vector()
+                action_mask = env.get_action_mask()
 
-                    player = (start + i) % env.num_players
+                player = (start + i) % env.num_players
 
-                    with torch.no_grad():
-                        action, log_prob, value = self.policies[player].select_action(state, action_mask)
+                with torch.no_grad():
+                    action, log_prob, value = self.policies[player].select_action(state, action_mask)
 
-                    env.step(action)
+                env.step(action)
         self.policy.train()
 
-        reward = env.players_game_points[self.player_learning]
+        reward = env.players_points[self.player_learning]
         for i in range(self.num_players):
-            self.writer.add_scalar(tag=f"Reward/Player {i}", scalar_value=env.players_game_points[i], global_step=self.eval_count)
+            self.writer.add_scalar(tag=f"Reward/Player {i}", scalar_value=env.players_points[i],
+                                   global_step=self.eval_count)
 
         if reward > self.best_reward:
             self.best_reward = reward
             self.best_model = copy.deepcopy(self.policy.state_dict())
-            print(f"New best reward : {self.best_reward}")
+            if self.DEBUG_PRINT:
+                print(f"New best reward : {self.best_reward}")
 
         self.eval_count += 1
 
@@ -331,6 +290,7 @@ class Training:
         plt.close()  # optional: closes the figure
 
         torch.save(self.best_model, os.path.join(self.path, "best_model.pth"))
+        torch.save(self.policy.state_dict(), os.path.join(self.path, "last_model.pth"))
         with open(os.path.join(self.path, "value-losses.pkl"), "wb") as f:
             pickle.dump(value_losses, f)
         with open(os.path.join(self.path, "losses.pkl"), "wb") as f:
