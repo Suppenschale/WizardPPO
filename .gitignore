@@ -9,9 +9,11 @@
 *.txt
 *.png
 log
+*.yaml
 
 # Ingore python scripts
 main.py
 evaluate.py
 /nn/ppo_network_old.py
 /graph
+
