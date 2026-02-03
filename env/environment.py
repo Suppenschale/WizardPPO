@@ -59,7 +59,6 @@ class Environment:
         self.max_rounds = 60 // self.num_players
 
         # Player properties
-        self.players_game_points: list[int] = [0 for _ in range(self.num_players)]
         self.players_points: list[int] = [0 for _ in range(self.num_players)]
         self.players_hand: list[list[Card]] = [[] for _ in range(self.num_players)]
         self.players_bid: list[int] = [0 for _ in range(self.num_players)]
@@ -86,23 +85,11 @@ class Environment:
 
         self.cards_played_in_trick: list[Card] = []
         self.cards_played: list[Card] = []
-        self.players_round_points_history: list[list[int]] = [[] for _ in range(self.max_rounds)]
 
     def __str__(self):
         return "Wizard Environment"
 
     def reset(self) -> None:
-
-        self.players_game_points = [0 for _ in range(self.num_players)]
-        self.players_round_points_history: list[list[int]] = [[] for _ in range(self.max_rounds)]
-
-        self.num_rounds = 0
-
-        self.start_player = 0
-
-        self.reset_round()
-
-    def reset_round(self) -> None:
         # Player properties
         self.players_points = [0 for _ in range(self.num_players)]
         self.players_hand = [[] for _ in range(self.num_players)]
@@ -113,10 +100,12 @@ class Environment:
         self.deck = DECK.copy()
 
         # Control flow variables
+        self.start_player = 0
         self.bidding = None
         self.round_counter = 0
         self.trick_counter = 0
         self.player_counter = 0
+        self.num_rounds = 0
 
         # Game logic
         self.cur_player = 0
@@ -129,23 +118,10 @@ class Environment:
         self.cards_played_in_trick = []
         self.cards_played = []
 
-    def start_game(self, start_player: int = 0) -> None:
-        # Reset env
-        self.reset()
-
-        # Start game = true
-        self.game_is_running = True
-
-        # Set start player
-        self.start_player = start_player
-
-        # Start first round
-        self.start_round()
-
-    def start_round(self) -> None:
+    def start_round(self, num_round: int) -> None:
 
         # Reset round
-        self.reset_round()
+        self.reset()
 
         # Set start player
         self.cur_player = self.start_player
@@ -156,8 +132,8 @@ class Environment:
         # Begin bidding phase
         self.bidding = True
 
-        # Increase num_rounds
-        self.num_rounds = self.num_rounds + 1
+        # Set num_rounds
+        self.num_rounds = num_round
 
         # Shuffle the deck
         self.rng.shuffle(self.deck)
@@ -183,8 +159,8 @@ class Environment:
         if self.trump.rank == WIZARD:
             self.trump = Card(-1, self.rng.choice(SUITS))
         if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
-                print(f"Color chosen : {self.trump.suit}")
-                print(f"Trump card: {self.trump}")
+            print(f"Color chosen : {self.trump.suit}")
+            print(f"Trump card: {self.trump}")
 
         if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
             print("")
@@ -231,10 +207,6 @@ class Environment:
                 if c.suit == self.first_card.suit or c.rank in [JESTER, WIZARD]]
 
     def step(self, card_idx: int) -> None:
-
-        # Check if game has started
-        if not self.game_is_running:
-            raise ValueError("No game has started yet")
 
         # Check if (any) round has started
         if self.bidding is None:
@@ -326,8 +298,6 @@ class Environment:
                     points = 20 + 10 * self.players_bid[i]
                 else:
                     points = -10 * abs(self.players_bid[i] - self.players_tricks[i])
-                self.players_game_points[i] += points
-                self.players_round_points_history[self.num_rounds - 1].append(points)
                 self.players_points[i] = points
 
             if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
@@ -337,25 +307,6 @@ class Environment:
                 for i in range(self.num_players):
                     print(f"    Player {i + 1}: {self.players_points[i]}")
                 print("")
-
-            # Start next round
-            if self.num_rounds < self.max_rounds:
-                self.start_round()
-            else:
-                self.game_is_running = False
-
-                if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
-                    print(f"Game is over")
-                    print("")
-                    print("Round histories:")
-                    for r in range(self.max_rounds):
-                        print(f"    Round {r}:")
-                        for i in range(self.num_players):
-                            print(f"        Player {i + 1}: {self.players_round_points_history[r][i]}")
-                    print("Game points: ")
-                    for i in range(self.num_players):
-                        print(f"    Player {i + 1}: {self.players_game_points[i]}")
-                    print("")
 
     def legal_move(self, card: Card) -> bool:
 
@@ -372,7 +323,8 @@ class Environment:
             # and played suit is different from first card suit...
             if card.suit != self.first_card.suit:
                 # then there must not be a suit in players hand
-                if {c for c in self.players_hand[self.cur_player] if c.suit == self.first_card.suit and c.rank not in [JESTER, WIZARD]}:
+                if {c for c in self.players_hand[self.cur_player] if
+                    c.suit == self.first_card.suit and c.rank not in [JESTER, WIZARD]}:
                     return False
 
         return True
