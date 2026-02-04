@@ -14,6 +14,8 @@ class CardEmbedding(nn.Module):
         self.rank_emb = nn.Embedding(15, self.emb_dim)
         self.suit_emb = nn.Embedding(5, self.emb_dim)
 
+        self.tanh = nn.Tanh()
+
     def forward(self, rank: torch.tensor, suit: torch.tensor, trump=False):
         rank_id = rank
         suit_id = suit - 1
@@ -21,4 +23,5 @@ class CardEmbedding(nn.Module):
         r = self.rank_emb(rank_id)
         s = self.suit_emb(suit_id)
 
-        return r + s if not trump else s
+        result = r + s if not trump else s
+        return self.tanh(result)

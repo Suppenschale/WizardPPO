@@ -151,6 +151,18 @@ class Environment:
             # Last round, set dummy trump
             self.trump = DUMMY_CARD
 
+        ############################################
+        # SETUP SPECIAL SETUP
+
+        self.trump = Card(2, Suit.RED)
+
+        self.players_hand[0] = [Card(10, Suit.RED), Card(13, Suit.YELLOW)]
+        self.players_hand[1] = [Card(5, Suit.RED), Card(3, Suit.BLUE)]
+        self.players_hand[2] = [Card(9, Suit.RED), Card(11, Suit.GREEN)]
+        self.players_hand[3] = [Card(7, Suit.RED), Card(9, Suit.BLUE)]
+
+        ############################################
+
         if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
             print(f"Start of round {self.num_rounds}")
             print(f"Trump card: {self.trump}")
@@ -158,9 +170,9 @@ class Environment:
         # If Wizard is trump chose a random color
         if self.trump.rank == WIZARD:
             self.trump = Card(-1, self.rng.choice(SUITS))
-        if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
-            print(f"Color chosen : {self.trump.suit}")
-            print(f"Trump card: {self.trump}")
+            if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
+                print(f"Color chosen : {self.trump.suit}")
+                print(f"Trump card: {self.trump}")
 
         if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
             print("")
@@ -391,19 +403,23 @@ class Environment:
             cards_to_tensor(card_played_in_trick, 4),
             cards_to_tensor(card_played, 60),
             torch.tensor([trump_color.value]),
-            torch.tensor([card_left,
-                          num_of_wizards,
-                          num_of_jesters,
-                          num_of_trumps,
-                          players_left,
-                          cards_left,
-                          wizards_played,
-                          jesters_played,
-                          trump_played,
-                          tricks_left,
-                          tricks_left_opp1,
-                          tricks_left_opp2,
-                          tricks_left_opp3]),
+            torch.tensor([card_left / 60.0,
+                          num_of_wizards / 4.0,
+                          num_of_jesters / 4.0,
+                          num_of_trumps / 13.0,
+                          players_left / self.num_players,
+                          cards_left / 60.0,
+                          wizards_played / 4.0,
+                          jesters_played / 4.0,
+                          trump_played / 13.0,
+                          tricks_left / 15.0,
+                          tricks_left_opp1 / 15.0,
+                          tricks_left_opp2 / 15.0,
+                          tricks_left_opp3 / 15.0]),
         ])
 
-        return state_tensor.type(torch.long).unsqueeze(0)  # add batch dim (1, 172)
+        state_tensor = torch.cat([
+            torch.tensor([tricks_left / 15.0]),
+        ])
+
+        return state_tensor.unsqueeze(0)  # add batch dim (1, 172)

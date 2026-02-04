@@ -4,13 +4,15 @@ env:
   seed: 16112004
   random: False
   debug_print: False
+  debug_round: False
+  round: 5
 
 sim:
   iter: 500
   dir: "./data"
 
 nn:
-  input_layer: 1213
+  input_layer: 3 #1213
   hidden_layer_shared: 512
   hidden_layer_each: 256
 

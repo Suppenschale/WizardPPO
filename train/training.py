@@ -20,7 +20,16 @@ from tqdm import tqdm, trange
 from env.bidding_heuristic import bidding_heuristic
 from nn.ppo_network import PPONetwork
 from env.environment import Environment
+from sim.simulation import Simulation
 
+FIXED_TEST_ROUND = 2
+
+STATE_BID_0 = None
+MASK_BID_0 = None
+STATE_BID_1 = None
+MASK_BID_1 = None
+STATE_BID_2 = None
+MASK_BID_2 = None
 
 def collect_batch(game_id, policies, player_learning):
     import torch
@@ -30,11 +39,13 @@ def collect_batch(game_id, policies, player_learning):
         = [], [], [], [], [], []
 
     env = Environment()
-    cur_round = 5
+    cur_round = FIXED_TEST_ROUND
     env.start_round(cur_round)
 
-    for player in range(env.num_players):
-        env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+    # SPECIAL SETUP
+    env.bid(bidding_heuristic(cur_round, 1.5))
+    for player in range(1, env.num_players):
+        env.bid(0)
 
     for _ in range(env.num_rounds):
 
@@ -106,9 +117,12 @@ class Training:
         self.train_count = 0
         self.eval_count = 0
         self.best_model = copy.deepcopy(policy.state_dict())
-        self.best_reward = -1000
+        self.best_winrate = 0
 
     def collect_batch_parallel(self):
+
+        #for i in range(self.num_players):
+        #    self.policies[i].load_state_dict(self.policy.state_dict())
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
@@ -120,17 +134,17 @@ class Training:
             future_to_game = {executors.submit(worker_func, game): game for game in range(self.game_iterations)}
 
             for future in concurrent.futures.as_completed(future_to_game):
-                try:
-                    result = future.result()
-                    states.extend(result['states'])
-                    action_masks.extend(result['action_masks'])
-                    actions.extend(result['actions'])
-                    rewards.extend(result['rewards'])
-                    log_probs.extend(result['log_probs'])
-                    values.extend(result['values'])
+                #try:
+                result = future.result()
+                states.extend(result['states'])
+                action_masks.extend(result['action_masks'])
+                actions.extend(result['actions'])
+                rewards.extend(result['rewards'])
+                log_probs.extend(result['log_probs'])
+                values.extend(result['values'])
 
-                except Exception as e:
-                    print(f"Game {future_to_game[future]} generated an exception: {e}")
+               # except Exception as e:
+                #    print(f"Game {future_to_game[future]} generated an exception: {e}")
 
         return {
             'states': torch.cat(states),
@@ -145,7 +159,7 @@ class Training:
 
         returns = [0 for _ in range(len(rewards))]
         advantages = [0 for _ in range(len(rewards))]
-        T = 5  # self.num_of_rounds
+        T = FIXED_TEST_ROUND  # self.num_of_rounds
 
         for n in range(self.game_iterations):
             gae = 0
@@ -165,7 +179,7 @@ class Training:
         states = batch['states']
         action_masks = batch['action_masks']
         actions = batch['actions']
-        log_probs_old = batch['log_probs']
+        log_probs_old = batch['log_probs'].detach()
         values = batch['values']
         rewards = batch['rewards']
 
@@ -173,7 +187,7 @@ class Training:
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-12)
 
         dataset = torch.utils.data.TensorDataset(states, action_masks, actions, log_probs_old, returns, advantages)
-        loader = torch.utils.data.DataLoader(dataset, batch_size=self.minibatch_size, shuffle=False)
+        loader = torch.utils.data.DataLoader(dataset, batch_size=self.minibatch_size, shuffle=True)
 
         value_loss, loss = 0, 0
 
@@ -183,9 +197,9 @@ class Training:
             #print(f"{i + 1}/{self.epochs}")
             for j, (mb_states, mb_action_masks, mb_actions, mb_log_probs_old, mb_returns, mb_advantages) in enumerate(
                     loader):
-                value, probs = self.policy(mb_states, mb_action_masks)
+                value, logits = self.policy(mb_states, mb_action_masks)
 
-                dist = torch.distributions.Categorical(probs)
+                dist = torch.distributions.Categorical(logits=logits)
                 entropy = dist.entropy().mean()
                 log_probs_new = dist.log_prob(mb_actions)
 
@@ -194,11 +208,13 @@ class Training:
                 surrogate2 = torch.clamp(ratio, 1 - self.clip_eps, 1 + self.clip_eps) * mb_advantages
                 policy_loss = -torch.min(surrogate1, surrogate2).mean()
 
-                value_loss = F.mse_loss(value.squeeze(), mb_returns)
+                value_loss = F.mse_loss(value.squeeze(-1), mb_returns)
 
                 loss = policy_loss + self.a1 * value_loss - self.a2 * entropy
 
-                #print(f"Value loss : {value_loss}, Loss : {loss}")
+                #self.policy.debug_simple_network(STATE_BID_1, MASK_BID_1)
+                #self.policy.debug_simple_network(STATE_BID_2, MASK_BID_2)
+                #print(f"Value loss : {value_loss}, Loss : {loss}, Policy loss : {policy_loss}")
 
                 self.writer.add_scalar(tag="Loss/Value", scalar_value=value_loss, global_step=self.train_count)
                 self.writer.add_scalar(tag="Loss/Policy", scalar_value=policy_loss, global_step=self.train_count)
@@ -221,50 +237,86 @@ class Training:
         return value_loss.item(), loss.item()
 
     def evaluate(self):
-        env = Environment()
-        cur_round = 5
-        env.start_round(cur_round)
+
+        print("EVALUATE")
+
         self.policy.eval()
 
-        for player in range(env.num_players):
-            env.bid(bidding_heuristic(env.players_hand[player], env.trump))
+        sim = Simulation(self.policies, [STATE_BID_0, MASK_BID_0, STATE_BID_1, MASK_BID_1, STATE_BID_2, MASK_BID_2])
+        winrate, avg_points = sim.start()
 
-        for _ in range(env.num_rounds):
-
-            start = env.get_start_player()
-            for i in range(env.num_players):
-                state = env.get_state_vector()
-                action_mask = env.get_action_mask()
-
-                player = (start + i) % env.num_players
-
-                with torch.no_grad():
-                    action, log_prob, value = self.policies[player].select_action(state, action_mask)
-
-                env.step(action)
-        self.policy.train()
-
-        reward = env.players_points[self.player_learning]
         for i in range(self.num_players):
-            self.writer.add_scalar(tag=f"Reward/Player {i}", scalar_value=env.players_points[i],
+            self.writer.add_scalar(tag=f"Winrate/Player {i}", scalar_value=winrate[i],
+                                   global_step=self.eval_count)
+            self.writer.add_scalar(tag=f"Reward/Player {i}", scalar_value=avg_points[i],
                                    global_step=self.eval_count)
 
-        if reward > self.best_reward:
-            self.best_reward = reward
+        if winrate[self.player_learning] > self.best_winrate:
+            self.best_winrate = winrate[self.player_learning]
             self.best_model = copy.deepcopy(self.policy.state_dict())
             if self.DEBUG_PRINT:
-                print(f"New best reward : {self.best_reward}")
+                print(f"New best reward : {self.best_winrate}")
 
+        self.policy.train()
         self.eval_count += 1
+
+    @staticmethod
+    def parse_batch(batch):
+
+        for k, v in batch.items():
+            print(f"{k} : {v}")
+
+    @staticmethod
+    def setup_special_state():
+        global STATE_BID_0
+        global MASK_BID_0
+        global STATE_BID_1
+        global MASK_BID_1
+        global STATE_BID_2
+        global MASK_BID_2
+
+        env = Environment()
+        env.start_round(2)
+        env.bid(0)
+        for player in range(1, env.num_players):
+            env.bid(0)
+
+        STATE_BID_0 = env.get_state_vector()
+        MASK_BID_0 = env.get_action_mask()
+
+        env = Environment()
+        env.start_round(2)
+        env.bid(1)
+        for player in range(1, env.num_players):
+            env.bid(0)
+
+        STATE_BID_1 = env.get_state_vector()
+        MASK_BID_1 = env.get_action_mask()
+
+        env = Environment()
+        env.start_round(2)
+        env.bid(2)
+        for player in range(1, env.num_players):
+            env.bid(0)
+
+        STATE_BID_2 = env.get_state_vector()
+        MASK_BID_2 = env.get_action_mask()
+
+        print(f"{STATE_BID_0=}")
+        print(f"{STATE_BID_1=}")
+        print(f"{STATE_BID_2=}")
 
     def training_loop(self, iterations):
 
         value_losses = []
         losses = []
 
+        self.setup_special_state()
+
         pbar = trange(iterations)
         for i in pbar:
             batch = self.collect_batch_parallel()
+            #self.parse_batch(batch)
             value_loss, loss = self.ppo_update(batch)
             pbar.set_postfix({
                 "loss": f"{loss:.4f}",
