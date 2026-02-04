@@ -37,9 +37,8 @@ class Simulation:
             env = Environment()
             env.start_round(2)
 
-            env.bid(random.choice([2]))
-            for player in range(3):
-                env.bid(bidding_heuristic(2, 2 / 4))
+            for player in range(env.num_players):
+                env.bid(bidding_heuristic(2, 4 / 2))
 
             for r in range(2):
 

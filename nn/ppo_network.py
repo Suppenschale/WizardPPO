@@ -36,46 +36,30 @@ class PPONetwork(nn.Module):
     def forward(self, x: torch.tensor, mask: torch.tensor):
         # Dims : [batch, 1]
 
-        #hand = x[:, :30].type(torch.long)               # 15 cards each 2
-        #trick = x[:, 30:38].type(torch.long)            # 4 cards each 2
-        #history = x[:, 38:158].type(torch.long)         # 60 cards each 2
-        #trump_color = x[:, 158:159].type(torch.long)    # 1 card each 2
-        #meta_info = x[:, 159:]                          # rest
+        hand = x[:, :30].type(torch.long)               # 15 cards each 2
+        trick = x[:, 30:38].type(torch.long)            # 4 cards each 2
+        history = x[:, 38:158].type(torch.long)         # 60 cards each 2
+        trump_color = x[:, 158:159].type(torch.long)    # 1 color
+        meta_info = x[:, 159:]                          # rest
 
-        #print(f"{hand=}")
-        #print(f"{trick=}")
-        #print(f"{history=}")
-        #print(f"{trump_color=}")
-        #print(f"{meta_info=}")
+        hand_embedding, hand_mask = self.embed_cards(hand)
+        trick_embedding, trick_mask = self.embed_cards(trick)
+        history_embedding, history_mask = self.embed_cards(history)
 
-        #hand_embedding, hand_mask = self.embed_cards(hand)
-        #trick_embedding, trick_mask = self.embed_cards(trick)
-        #history_embedding, history_mask = self.embed_cards(history)
+        trump_color_embedding = self.card_embedding(torch.zeros_like(trump_color), trump_color, trump=True)
 
-        #trump_color_embedding = self.card_embedding(torch.zeros_like(trump_color), trump_color, trump=True)
-
-        #shared = torch.cat([                         # (batch_size, 1213)
-        #    hand_embedding.flatten(start_dim=1),            # (batch_size,   15 * emb_dim)  = (batch_size, 225)
-        #    trick_embedding.flatten(start_dim=1),           # (batch_size,    4 * emb_dim)  = (batch_size,  60)
-        #    history_embedding.flatten(start_dim=1),         # (batch_size,   60 * emb_dim)  = (batch_size, 900)
-        #    trump_color_embedding.flatten(start_dim=1),     # (batch_size,    1 * emb_dim)  = (batch_size,  15)
-        #    meta_info                                       # (batch_size,    3)            = (batch_size,  13)
-        #], dim=1)
+        shared = torch.cat([                         # (batch_size, 1213)
+            hand_embedding.flatten(start_dim=1),            # (batch_size,   15 * emb_dim)  = (batch_size, 225)
+            trick_embedding.flatten(start_dim=1),           # (batch_size,    4 * emb_dim)  = (batch_size,  60)
+            history_embedding.flatten(start_dim=1),         # (batch_size,   60 * emb_dim)  = (batch_size, 900)
+            trump_color_embedding.flatten(start_dim=1),     # (batch_size,    1 * emb_dim)  = (batch_size,  15)
+            meta_info                                       # (batch_size,  177)            = (batch_size,  13)
+        ], dim=1)
 
         #for i in range(shared.shape[1]):  # 1213 elements
         #    print(f"[{i}] = {shared[0, i].item():.8f}")
 
-        one_hot = torch.zeros(x.shape[0], 3)
-
-        mask0 = x[:, 0] <= 0.05
-        mask1 = (x[:, 0] > 0.05) & (x[:, 0] <= 0.1)
-        mask2 = x[:, 0] > 0.1
-
-        one_hot[mask0, 0] = 1.0
-        one_hot[mask1, 1] = 1.0
-        one_hot[mask2, 2] = 1.0
-
-        shared = self.shared(one_hot)
+        shared = self.shared(shared)
         shared = F.relu(shared)
 
         value = self.hidden_layer_state(shared)
@@ -118,7 +102,7 @@ class PPONetwork(nn.Module):
         _, logits = self.forward(x, mask)
         prob = F.softmax(logits, dim=1)
         print(
-            f"Probability to pick move for {i} tricks : Red 10 : {prob[..., 9].item()}, Yellow 13 : {prob[..., 25].item()} ({x})")
+            f"Probability to pick move for {i} tricks : Red 10 : {prob[..., 9].item()}, Yellow 13 : {prob[..., 25].item()} ()")
 
     def debug_simple_network(self, x: torch.tensor, mask: torch.tensor):
         print(f"\n=== SIMPLE NETWORK DEBUG ===")

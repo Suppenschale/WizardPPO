@@ -43,9 +43,8 @@ def collect_batch(game_id, policies, player_learning):
     env.start_round(cur_round)
 
     # SPECIAL SETUP
-    env.bid(bidding_heuristic(cur_round, 1.5))
-    for player in range(1, env.num_players):
-        env.bid(0)
+    for player in range(env.num_players):
+        env.bid(bidding_heuristic(cur_round, 4/2))
 
     for _ in range(env.num_rounds):
 
@@ -237,8 +236,6 @@ class Training:
         return value_loss.item(), loss.item()
 
     def evaluate(self):
-
-        print("EVALUATE")
 
         self.policy.eval()
 
