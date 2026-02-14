@@ -36,13 +36,16 @@ def one_hot_encode_cards(cards: list[Card]) -> list:
 
 class Environment:
 
-    def __init__(self):
+    def __init__(self, seed=None):
 
         with open("parameter.yaml", "r") as f:
             self.config = yaml.safe_load(f)
 
         if self.config["env"]["random"]:
-            self.rng = random.Random()
+            if seed is None:
+                self.rng = random.Random()
+            else:
+                self.rng = random.Random(seed)
         else:
             self.rng = random.Random(self.config["env"]["seed"])
 
@@ -118,13 +121,16 @@ class Environment:
         self.cards_played_in_trick = []
         self.cards_played = []
 
-    def start_round(self, num_round: int) -> None:
+    def start_round(self, num_round: int, start_player: int | None = None) -> None:
 
         # Reset round
         self.reset()
 
         # Set start player
-        self.cur_player = self.start_player
+        if start_player is None:
+            self.cur_player = self.start_player
+        else:
+            self.cur_player = start_player
 
         # Set next start player for next round
         self.start_player = (self.start_player + 1) % self.num_players
@@ -154,15 +160,36 @@ class Environment:
         ############################################
         # SETUP SPECIAL SETUP
 
-        self.trump = Card(2, Suit.RED)
+        #self.trump = Card(2, Suit.RED)
 
-        self.players_hand[0] = [Card(10, Suit.RED), Card(13, Suit.YELLOW)]
-        self.players_hand[1] = [Card(5, Suit.RED), Card(3, Suit.BLUE)]
-        self.players_hand[2] = [Card(9, Suit.RED), Card(11, Suit.GREEN)]
-        self.players_hand[3] = [Card(7, Suit.RED), Card(9, Suit.BLUE)]
+        #self.players_hand[0] = [Card(10, Suit.RED), Card(13, Suit.YELLOW)]
+        #self.players_hand[1] = [Card(5, Suit.RED), Card(3, Suit.BLUE)]
+        #self.players_hand[2] = [Card(9, Suit.RED), Card(11, Suit.GREEN)]
+        #self.players_hand[3] = [Card(7, Suit.RED), Card(9, Suit.BLUE)]
 
-        self.cards_played = [self.trump]
+        #self.cards_played = [self.trump]
 
+        if False:
+            self.trump = Card(0, Suit.NO_SUIT)
+
+            self.players_hand[0] = [Card(14, Suit.NO_SUIT), Card(13, Suit.GREEN), Card(9, Suit.GREEN),
+                                    Card(8, Suit.GREEN), Card(7, Suit.GREEN), Card(6, Suit.GREEN),
+                                    Card(5, Suit.GREEN), Card(4, Suit.GREEN), Card(3, Suit.GREEN),
+                                    Card(2, Suit.GREEN), Card(1, Suit.GREEN)]
+            self.players_hand[1] = [Card(12, Suit.GREEN), Card(1, Suit.RED), Card(2, Suit.RED),
+                                    Card(3, Suit.RED), Card(4, Suit.RED), Card(5, Suit.RED),
+                                    Card(6, Suit.RED), Card(7, Suit.RED), Card(8, Suit.RED),
+                                    Card(9, Suit.RED), Card(10, Suit.RED)]
+            self.players_hand[2] = [Card(11, Suit.GREEN), Card(1, Suit.YELLOW), Card(2, Suit.YELLOW),
+                                    Card(3, Suit.YELLOW), Card(4, Suit.YELLOW), Card(5, Suit.YELLOW),
+                                    Card(6, Suit.YELLOW), Card(7, Suit.YELLOW), Card(8, Suit.YELLOW),
+                                    Card(9, Suit.YELLOW), Card(10, Suit.YELLOW)]
+            self.players_hand[3] = [Card(10, Suit.GREEN), Card(1, Suit.BLUE), Card(2, Suit.BLUE),
+                                    Card(3, Suit.BLUE), Card(4, Suit.BLUE), Card(5, Suit.BLUE),
+                                    Card(6, Suit.BLUE), Card(7, Suit.BLUE), Card(8, Suit.BLUE),
+                                    Card(9, Suit.BLUE), Card(10, Suit.BLUE)]
+
+            self.cards_played = [self.trump]
         ############################################
 
         if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
@@ -389,13 +416,17 @@ class Environment:
                             card.suit == self.trump.suit and card.rank not in [JESTER, WIZARD]])
 
         cur_player = self.cur_player
-        tricks_left = self.players_bid[cur_player] - self.players_tricks[cur_player]
+        tricks = self.players_tricks[cur_player]
+        bid = self.players_bid[cur_player]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp1 = self.players_bid[cur_player] - self.players_tricks[cur_player]
+        tricks_opp1 = self.players_tricks[cur_player]
+        bid_opp1 = self.players_bid[cur_player]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp2 = self.players_bid[cur_player] - self.players_tricks[cur_player]
+        tricks_opp2 = self.players_tricks[cur_player]
+        bid_opp2 = self.players_bid[cur_player]
         cur_player = (cur_player + 1) % self.num_players
-        tricks_left_opp3 = self.players_bid[cur_player] - self.players_tricks[cur_player]
+        tricks_opp3 = self.players_tricks[cur_player]
+        bid_opp3 = self.players_bid[cur_player]
 
         def cards_to_tensor(cards, max_size):
             tensor = torch.tensor([(card.rank, card.suit.value) for card in cards]).flatten()
@@ -405,6 +436,15 @@ class Environment:
             tensor = torch.zeros(N)
             tensor[value] = 1
             return tensor
+
+        def encode_card(card: Card):
+            card_one_hot = torch.zeros(15)
+            color_one_hot = torch.zeros(5)
+
+            card_one_hot[card.rank] = 1
+            color_one_hot[card.suit.value - 1] = 1
+
+            return torch.cat([card_one_hot, color_one_hot])
 
         state_tensor = torch.cat([
             cards_to_tensor(hand, 15),
@@ -420,29 +460,82 @@ class Environment:
                           wizards_played / 4.0,
                           jesters_played / 4.0,
                           trump_played / 13.0,
-                          tricks_left / 15.0,
-                          tricks_left_opp1 / 15.0,
-                          tricks_left_opp2 / 15.0,
-                          tricks_left_opp3 / 15.0]),
+                          tricks / 15.0,
+                          tricks_opp1 / 15.0,
+                          tricks_opp2 / 15.0,
+                          tricks_opp3 / 15.0]),
         ])
 
         state_tensor = torch.cat([
             cards_to_tensor(hand, 15),
             cards_to_tensor(card_played_in_trick, 4),
             cards_to_tensor(card_played, 60),
-            torch.tensor([trump_color.value]),                 # color encoding
-            to_one_hot_tensor(num_of_wizards, 5),           # 0...4 wizards in hand
-            to_one_hot_tensor(num_of_jesters, 5),           # 0...4 jesters in hand
-            to_one_hot_tensor(num_of_trumps, 14),           # 0...13 trumps in hand
-            to_one_hot_tensor(players_left, 4),             # 0...3 players left
-            to_one_hot_tensor(cards_higher_left, 61),       # 0...60 possible higher cards left
-            to_one_hot_tensor(wizards_played, 5),           # 0...4 wizards played
-            to_one_hot_tensor(jesters_played, 5),           # 0...4 jesters played
-            to_one_hot_tensor(trump_played, 14),            # 0...13 trumps played
-            to_one_hot_tensor(tricks_left, 16),             # 0...15 tricks
-            to_one_hot_tensor(tricks_left_opp1, 16),        # 0...15 tricks
-            to_one_hot_tensor(tricks_left_opp1, 16),        # 0...15 tricks
-            to_one_hot_tensor(tricks_left_opp3, 16),        # 0...15 tricks
+            torch.tensor([trump_color.value]),  # color encoding
+            to_one_hot_tensor(num_of_wizards, 5),  # 0...4 wizards in hand
+            to_one_hot_tensor(num_of_jesters, 5),  # 0...4 jesters in hand
+            to_one_hot_tensor(num_of_trumps, 14),  # 0...13 trumps in hand
+            to_one_hot_tensor(players_left, 4),  # 0...3 players left
+            to_one_hot_tensor(wizards_played, 5),  # 0...4 wizards played
+            to_one_hot_tensor(jesters_played, 5),  # 0...4 jesters played
+            to_one_hot_tensor(trump_played, 14),  # 0...13 trumps played
+            to_one_hot_tensor(tricks, 16),  # 0...15 tricks
+            to_one_hot_tensor(tricks_opp1, 16),  # 0...15 tricks
+            to_one_hot_tensor(tricks_opp1, 16),  # 0...15 tricks
+            to_one_hot_tensor(tricks_opp3, 16),  # 0...15 tricks
         ])
 
-        return state_tensor.unsqueeze(0)  # add batch dim (1, ?)
+        def one_hot_cards_played(cards):
+            one_hot = torch.zeros(60)
+
+            wizard_count = 0
+            jester_count = 0
+
+            for card in cards:
+                if card.suit != Suit.NO_SUIT:
+                    one_hot[card.rank * 4 + card.suit.value - 1] = 1
+                elif card.rank == JESTER:
+                    jester_count += 1
+                elif card.rank == WIZARD:
+                    wizard_count += 1
+
+            for i in range(jester_count):
+                one_hot[i] = 1
+
+            for i in range(wizard_count):
+                one_hot[56 + i] = 1
+
+            return one_hot
+
+        state_tensor = torch.cat([
+            torch.cat([encode_card(hand[i]) if i < len(hand) else torch.zeros(20) for i in range(15)]),  # hand cards
+            torch.cat([encode_card(card_played_in_trick[i]) if i < len(card_played_in_trick) else torch.zeros(20) for i in range(4)]),  # cards played in trick
+            one_hot_cards_played(card_played),  # cards played
+            torch.tensor([0]) if self.trump.suit == Suit.NO_SUIT else torch.tensor([1]),
+
+            torch.tensor([trump_color.value]),             # color encoding
+            to_one_hot_tensor(num_of_wizards, 5),       # 0...4 wizards in hand
+            to_one_hot_tensor(num_of_jesters, 5),       # 0...4 jesters in hand
+            to_one_hot_tensor(num_of_trumps, 14),       # 0...13 trumps in hand
+            to_one_hot_tensor(players_left, 4),         # 0...3 players left
+            to_one_hot_tensor(wizards_played, 5),       # 0...4 wizards played
+            to_one_hot_tensor(jesters_played, 5),       # 0...4 jesters played
+            to_one_hot_tensor(trump_played, 14),        # 0...13 trumps played
+            to_one_hot_tensor(self.num_rounds-1, 15),   # 0...14 max round
+            to_one_hot_tensor(self.round_counter, 15),  # 0...14 current round
+            to_one_hot_tensor(self.player_counter, 4),  # 0...3  current player
+            torch.tensor([tricks == bid]),                 # 1 if tricks == bid else 0
+            to_one_hot_tensor(tricks, 16),              # 0...15 tricks
+            to_one_hot_tensor(bid, 16),                 # 0...15 bids
+            torch.tensor([tricks == bid]),                 # 1 if tricks == bid else 0
+            to_one_hot_tensor(tricks_opp1, 16),         # 0...15 tricks
+            to_one_hot_tensor(bid_opp1, 16),            # 0...15 bids
+            torch.tensor([tricks_opp1 == bid_opp1]),       # 1 if tricks == bid else 0
+            to_one_hot_tensor(tricks_opp2, 16),         # 0...15 tricks
+            to_one_hot_tensor(bid_opp2, 16),            # 0...15 bids
+            torch.tensor([tricks_opp2 == bid_opp2]),       # 1 if tricks == bid else 0
+            to_one_hot_tensor(tricks_opp3, 16),         # 0...15 tricks
+            to_one_hot_tensor(bid_opp3, 16),            # 0...15 bids
+            torch.tensor([tricks_opp3 == bid_opp3]),       # 1 if tricks == bid else 0
+        ])
+
+        return state_tensor.unsqueeze(0)  # add batch dim (1, 626)
