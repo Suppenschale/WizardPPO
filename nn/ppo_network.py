@@ -36,30 +36,30 @@ class PPONetwork(nn.Module):
     def forward(self, x: torch.tensor, mask: torch.tensor):
         # Dims : [batch, 1]
 
-        hand = x[:, :30].type(torch.long)               # 15 cards each 2
-        trick = x[:, 30:38].type(torch.long)            # 4 cards each 2
-        history = x[:, 38:158].type(torch.long)         # 60 cards each 2
-        trump_color = x[:, 158:159].type(torch.long)    # 1 color
-        meta_info = x[:, 159:]                          # rest
+        #hand = x[:, :30].type(torch.long)               # 15 cards each 2
+        #trick = x[:, 30:38].type(torch.long)            # 4 cards each 2
+        #history = x[:, 38:158].type(torch.long)         # 60 cards each 2
+        #trump_color = x[:, 158:159].type(torch.long)    # 1 color
+        #meta_info = x[:, 159:]                          # rest
 
-        hand_embedding, hand_mask = self.embed_cards(hand)
-        trick_embedding, trick_mask = self.embed_cards(trick)
-        history_embedding, history_mask = self.embed_cards(history)
+        #hand_embedding, hand_mask = self.embed_cards(hand)
+        #trick_embedding, trick_mask = self.embed_cards(trick)
+        #history_embedding, history_mask = self.embed_cards(history)
 
-        trump_color_embedding = self.card_embedding(torch.zeros_like(trump_color), trump_color, trump=True)
+        #trump_color_embedding = self.card_embedding(torch.zeros_like(trump_color), trump_color, trump=True)
 
-        shared = torch.cat([                         # (batch_size, 1213)
-            hand_embedding.flatten(start_dim=1),            # (batch_size,   15 * emb_dim)  = (batch_size, 225)
-            trick_embedding.flatten(start_dim=1),           # (batch_size,    4 * emb_dim)  = (batch_size,  60)
-            history_embedding.flatten(start_dim=1),         # (batch_size,   60 * emb_dim)  = (batch_size, 900)
-            trump_color_embedding.flatten(start_dim=1),     # (batch_size,    1 * emb_dim)  = (batch_size,  15)
-            meta_info                                       # (batch_size,  177)            = (batch_size,  13)
-        ], dim=1)
+        #shared = torch.cat([                         # (batch_size, 1213)
+        #    hand_embedding.flatten(start_dim=1),            # (batch_size,   15 * emb_dim)  = (batch_size, 225)
+        #    trick_embedding.flatten(start_dim=1),           # (batch_size,    4 * emb_dim)  = (batch_size,  60)
+        #    history_embedding.flatten(start_dim=1),         # (batch_size,   60 * emb_dim)  = (batch_size, 900)
+        #    trump_color_embedding.flatten(start_dim=1),     # (batch_size,    1 * emb_dim)  = (batch_size,  15)
+        #    meta_info                                       # (batch_size,  177)            = (batch_size,  13)
+        #], dim=1)
 
         #for i in range(shared.shape[1]):  # 1213 elements
         #    print(f"[{i}] = {shared[0, i].item():.8f}")
 
-        shared = self.shared(shared)
+        shared = self.shared(x)
         shared = F.relu(shared)
 
         value = self.hidden_layer_state(shared)
@@ -103,50 +103,3 @@ class PPONetwork(nn.Module):
         prob = F.softmax(logits, dim=1)
         print(
             f"Probability to pick move for {i} tricks : Red 10 : {prob[..., 9].item()}, Yellow 13 : {prob[..., 25].item()} ()")
-
-    def debug_simple_network(self, x: torch.tensor, mask: torch.tensor):
-        print(f"\n=== SIMPLE NETWORK DEBUG ===")
-
-        # Extract only tricks_left (position 169)
-        tricks_left_idx = 169  # Based on your state structure
-        tricks_left = x
-
-        print(f"Input shape: {x.shape}")
-        print(f"tricks_left value: {tricks_left.item():.6f}")
-        print(f"tricks_left range expected: [0, 1]")
-
-        # Forward pass step by step
-        shared = self.shared(x)
-        print(f"\nAfter shared linear:")
-        print(f"  Shape: {shared.shape}")
-        print(f"  Values: {shared[0].detach().cpu().numpy()}")
-        print(f"  Min: {shared.min().item():.6f}, Max: {shared.max().item():.6f}")
-
-        shared_relu = F.relu(shared)
-        print(f"\nAfter ReLU:")
-        print(f"  Values: {shared_relu[0].detach().cpu().numpy()}")
-        print(f"  Zeros: {(shared_relu == 0).sum().item()}/{shared_relu.numel()}")
-
-        value_path = self.hidden_layer_state(shared_relu)
-        value_relu = F.relu(value_path)
-        value_out = self.output_layer_value(value_relu)
-
-        print(f"\nValue path:")
-        print(f"  After hidden_state: {value_path[0].detach().cpu().numpy()}")
-        print(f"  After ReLU: {value_relu[0].detach().cpu().numpy()}")
-        print(f"  Final value: {value_out.item():.6f}")
-
-        # Check gradients
-        loss = value_out.mean()
-        loss.backward()
-
-        grad_sum = 0
-        for name, param in self.named_parameters():
-            if param.grad is not None:
-                grad_norm = param.grad.norm().item()
-                grad_sum += grad_norm
-                print(f"  {name} gradient norm: {grad_norm:.6f}")
-
-        print(f"\nTotal gradient norm: {grad_sum:.6f}")
-
-        return value_out
