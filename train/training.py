@@ -1,36 +1,22 @@
 import concurrent.futures
-import copy
-import itertools
+import datetime
 import multiprocessing
-import pickle
 import random
-import time
-from functools import partial
-
 import torch
 import torch.nn.functional as F
 import os
 import numpy as np
-
-from tensorboard import program
-from torch import nn
-from torch.utils.tensorboard import SummaryWriter
 import yaml
-import matplotlib.pyplot as plt
-from torch.optim import Optimizer
-from tqdm import tqdm, trange
 
+from functools import partial
+from torch.utils.tensorboard import SummaryWriter
+from torch.optim import Optimizer, Adam
+from tqdm import trange
 from env.bidding_heuristic import bidding_heuristic
 from nn.ppo_network import PPONetwork
-from env.environment import Environment
 from sim.simulation import Simulation
-
-STATE_BID_0 = None
-MASK_BID_0 = None
-STATE_BID_1 = None
-MASK_BID_1 = None
-STATE_BID_2 = None
-MASK_BID_2 = None
+from tensorboard import program
+from datetime import datetime
 
 
 def build_permutation(max_val=120):
@@ -46,10 +32,13 @@ def build_permutation(max_val=120):
 
     return np.concatenate(perm)
 
-def reshape_increasing(lst):
+
+def reshape_increasing():
     result = []
     start = 0
     size = 1
+
+    lst = build_permutation().tolist()
 
     while start < len(lst):
         result.append(lst[start:start + size])
@@ -59,11 +48,10 @@ def reshape_increasing(lst):
     return result
 
 
-PERM = build_permutation()
-IDX = reshape_increasing(PERM.tolist())
+IDX = reshape_increasing()
 
 
-def collect_batch(game_id, policy, player_learning):
+def collect_batch(policy):
     import torch
     from env.environment import Environment
 
@@ -80,7 +68,7 @@ def collect_batch(game_id, policy, player_learning):
         env.start_round(cur_round, random.choice(range(env.num_players)))
 
         for player in range(env.num_players):
-            max_value = -10000000
+            max_value = float('-inf')
             max_bid = -1
             for test_bid in range(env.num_rounds + 1):
                 env.players_bid[env.cur_player] = test_bid
@@ -102,8 +90,7 @@ def collect_batch(game_id, policy, player_learning):
 
                 player = (start + i) % env.num_players
 
-                with torch.no_grad():
-                    action, log_prob, value = policy.select_action(state, action_mask)
+                action, log_prob, value = policy.select_action(state, action_mask)
 
                 states_local[player].append(state)
                 action_masks_local[player].append(action_mask)
@@ -117,7 +104,7 @@ def collect_batch(game_id, policy, player_learning):
             for _ in range(cur_round - 1):
                 rewards_local[player].append(0)
             reward = env.players_points[player]
-            rewards_local[player].append(reward if True else reward * 10)
+            rewards_local[player].append(reward)
 
     return {
         'states': [state for state_list in states_local for state in state_list],
@@ -150,27 +137,18 @@ class Training:
         self.game_length = self.deck_size // self.num_players
         self.num_of_rounds = (self.game_length * (self.game_length + 1)) // 2
 
-        #self.policies = [PPONetwork() for _ in range(self.num_players)]
-
-        self.DEBUG_PRINT: bool = config["env"]["debug_print"]
+        self.debug_print: bool = config["env"]["debug_print"]
 
         self.path = path
         self.writer = SummaryWriter(log_dir=os.path.join(path, "board"))
-        self.step = 0
-
-        self.player_learning = 0
-        #self.policies[self.player_learning] = policy
-
         self.train_count = 0
         self.eval_count = 0
-        self.best_model = copy.deepcopy(policy.state_dict())
-        self.best_winrate = 0
 
     def collect_batch_parallel(self):
 
         states, action_masks, actions, rewards, log_probs, values = [], [], [], [], [], []
 
-        worker_func = partial(collect_batch, policy=self.policy, player_learning=self.player_learning)
+        worker_func = partial(collect_batch, policy=self.policy)
 
         num_workers = min(self.game_iterations, multiprocessing.cpu_count())
 
@@ -178,17 +156,16 @@ class Training:
             future_to_game = {executors.submit(worker_func, game): game for game in range(self.game_iterations)}
 
             for future in concurrent.futures.as_completed(future_to_game):
-                #try:
-                result = future.result()
-                states.extend(result['states'])
-                action_masks.extend(result['action_masks'])
-                actions.extend(result['actions'])
-                rewards.extend(result['rewards'])
-                log_probs.extend(result['log_probs'])
-                values.extend(result['values'])
-
-            # except Exception as e:
-            #    print(f"Game {future_to_game[future]} generated an exception: {e}")
+                try:
+                    result = future.result()
+                    states.extend(result['states'])
+                    action_masks.extend(result['action_masks'])
+                    actions.extend(result['actions'])
+                    rewards.extend(result['rewards'])
+                    log_probs.extend(result['log_probs'])
+                    values.extend(result['values'])
+                except Exception as e:
+                    print(f"Game {future_to_game[future]} generated an exception: {e}")
 
         return {
             'states': torch.cat(states),
@@ -234,23 +211,15 @@ class Training:
         advantages = advantages.detach()
         returns = returns.detach()
 
-        #advantages = torch.where(
-        #    advantages > 0,
-        #    advantages * 1.5,
-        #    advantages
-        #)
-
         dataset = torch.utils.data.TensorDataset(states, action_masks, actions, log_probs_old, returns, advantages)
         loader = torch.utils.data.DataLoader(dataset, batch_size=self.minibatch_size, shuffle=True)
 
         value_loss, policy_loss, loss = 0, 0, 0
         value = 0
 
-        # torch.autograd.set_detect_anomaly(True)
         self.policy.train()
 
         for i in range(self.epochs):
-            #print(f"{i + 1}/{self.epochs}")
             for j, (mb_states, mb_action_masks, mb_actions, mb_log_probs_old, mb_returns, mb_advantages) in enumerate(
                     loader):
                 value, logits = self.policy(mb_states, mb_action_masks)
@@ -263,12 +232,9 @@ class Training:
                 surrogate1 = ratio * mb_advantages
                 surrogate2 = torch.clamp(ratio, 1 - self.clip_eps, 1 + self.clip_eps) * mb_advantages
                 policy_loss = torch.min(surrogate1, surrogate2).mean()
-
                 value_loss = F.mse_loss(value.squeeze(-1), mb_returns)
 
                 loss = -policy_loss + self.a1 * value_loss - self.a2 * entropy
-
-                #print(f"Value loss : {value_loss}, Loss : {loss}, Policy loss : {policy_loss}")
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -278,11 +244,6 @@ class Training:
         self.writer.add_scalar(tag="Loss/Policy", scalar_value=policy_loss, global_step=self.train_count)
         self.writer.add_scalar(tag="Loss/Loss", scalar_value=loss, global_step=self.train_count)
         self.writer.add_scalar(tag="Model/Value", scalar_value=value[0], global_step=self.train_count)
-        for name, param in self.policy.named_parameters():
-            if 'weight' in name:
-                self.writer.add_histogram(f'weights/{name}', param, global_step=self.train_count)
-            elif 'bias' in name:
-                self.writer.add_histogram(f'biases/{name}', param, global_step=self.train_count)
         self.writer.flush()
         self.train_count += 1
         self.evaluate()
@@ -293,11 +254,8 @@ class Training:
 
         self.policy.eval()
 
-        sim = Simulation(self.policy, [STATE_BID_0, MASK_BID_0, STATE_BID_1, MASK_BID_1, STATE_BID_2, MASK_BID_2])
+        sim = Simulation(self.policy)
         winrate, avg_points = sim.start()
-
-        #sim_random = Simulation(PPONetwork(), [STATE_BID_0, MASK_BID_0, STATE_BID_1, MASK_BID_1, STATE_BID_2, MASK_BID_2])
-        #winrate_random, avg_points_random = sim_random.start(FIXED_TEST_ROUND)
 
         self.writer.add_scalars("Winrates/Policy",
                                 {f"Player {p}": winrate[p] for p in range(self.num_players)},
@@ -306,117 +264,59 @@ class Training:
                                 {f"Player {p}": avg_points[p] for p in range(self.num_players)},
                                 global_step=self.eval_count)
 
-        #red10_0, yellow13_0, = self.policy.print_special_state(0, STATE_BID_0, MASK_BID_0)
-        #red10_1, yellow13_1, = self.policy.print_special_state(1, STATE_BID_1, MASK_BID_1)
-        #red10_2, yellow13_2, = self.policy.print_special_state(2, STATE_BID_2, MASK_BID_2)
-        #self.writer.add_scalars("Action/Bid 0", {"Red 10": red10_0, "Yellow 13": yellow13_0}, global_step=self.eval_count)
-        #self.writer.add_scalars("Action/Bid 1", {"Red 10": red10_1, "Yellow 13": yellow13_1}, global_step=self.eval_count)
-        #self.writer.add_scalars("Action/Bid 2", {"Red 10": red10_2, "Yellow 13": yellow13_2}, global_step=self.eval_count)
-
-        #self.writer.add_scalars("Winrates/Random",
-        #                        {f"Player {p}": winrate_random[p] for p in range(self.num_players)},
-        #                        global_step=self.eval_count)
-        #self.writer.add_scalars("Rewards/Random",
-        #                        {f"Player {p}": avg_points_random[p] for p in range(self.num_players)},
-        #                        global_step=self.eval_count)
-
-        if winrate[self.player_learning] > self.best_winrate:
-            self.best_winrate = winrate[self.player_learning]
-            self.best_model = copy.deepcopy(self.policy.state_dict())
-            if self.DEBUG_PRINT:
-                print(f"New best reward : {self.best_winrate}")
-
-            torch.save(self.best_model, os.path.join(self.path, "best_model.pth"))
         torch.save(self.policy.state_dict(), os.path.join(self.path, "last_model.pth"))
 
         self.policy.train()
         self.eval_count += 1
 
-    @staticmethod
-    def parse_batch(batch):
-
-        for k, v in batch.items():
-            print(f"{k} : {v}")
-
-    @staticmethod
-    def setup_special_state():
-        global STATE_BID_0
-        global MASK_BID_0
-        global STATE_BID_1
-        global MASK_BID_1
-        global STATE_BID_2
-        global MASK_BID_2
-
-        env = Environment()
-        env.start_round(2)
-        env.bid(0)
-        for player in range(1, env.num_players):
-            env.bid(0)
-
-        STATE_BID_0 = env.get_state_vector()
-        MASK_BID_0 = env.get_action_mask()
-
-        env = Environment()
-        env.start_round(2)
-        env.bid(1)
-        for player in range(1, env.num_players):
-            env.bid(0)
-
-        STATE_BID_1 = env.get_state_vector()
-        MASK_BID_1 = env.get_action_mask()
-
-        env = Environment()
-        env.start_round(2)
-        env.bid(2)
-        for player in range(1, env.num_players):
-            env.bid(0)
-
-        STATE_BID_2 = env.get_state_vector()
-        MASK_BID_2 = env.get_action_mask()
-
-        #print(f"{STATE_BID_0=}")
-        #print(f"{STATE_BID_1=}")
-        #print(f"{STATE_BID_2=}")
-
     def training_loop(self, iterations):
-
-        value_losses = []
-        losses = []
 
         try:
             pbar = trange(iterations)
-            for i in pbar:
+            for _ in pbar:
                 batch = self.collect_batch_parallel()
                 value_loss, loss = self.ppo_update(batch)
                 pbar.set_postfix({
                     "loss": f"{loss:.4f}",
                     "value_loss": f"{value_loss:.4f}"
                 })
-                value_losses.append(value_loss)
-                losses.append(loss)
-
-            x = range(1, iterations + 1)
-            fig, axs = plt.subplots(1, 2, figsize=(10, 4))
-
-            # First plot (on the left)
-            axs[0].plot(x, losses)
-            axs[0].set_title("Losses")
-
-            # Second plot (on the right)
-            axs[1].plot(x, value_losses)
-            axs[1].set_title("Value Losses")
-
-            # Improve layout
-            plt.tight_layout()
-            plt.savefig(os.path.join(self.path, "losses.png"))  # save as PNG
-            plt.close()  # optional: closes the figure
 
         except KeyboardInterrupt:
             print("Training interrupted")
         finally:
-            torch.save(self.best_model, os.path.join(self.path, "best_model.pth"))
             torch.save(self.policy.state_dict(), os.path.join(self.path, "last_model.pth"))
-            with open(os.path.join(self.path, "value-losses.pkl"), "wb") as f:
-                pickle.dump(value_losses, f)
-            with open(os.path.join(self.path, "losses.pkl"), "wb") as f:
-                pickle.dump(losses, f)
+
+
+def start_tensorboard(path, port=6006):
+    tb = program.TensorBoard()
+    tb.configure(argv=[None, "--logdir", os.path.join(path, "board"), "--port", str(port)])
+    url = tb.launch()
+    print(f"TensorBoard running at {url}")
+
+
+def main():
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    path = os.path.join("log", timestamp)
+    os.makedirs(path, exist_ok=True)
+    os.makedirs(os.path.join(path, "board"), exist_ok=True)
+    print(f"Create {path}")
+    runPath = os.path.join(path, "board")
+    print(f"Create {runPath}")
+
+    with open("parameter.yaml", "r") as f:
+        config = yaml.safe_load(f)
+
+    lr = config["train"]["lr"]
+    iterations = config["train"]["iter"]
+
+    network = PPONetwork()
+    network.train()
+    optimizer = Adam(network.parameters(), lr=lr)
+
+    start_tensorboard(path)
+    train = Training(network, optimizer, path)
+    train.training_loop(iterations)
+
+
+if __name__ == "__main__":
+    main()
