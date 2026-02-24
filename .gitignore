@@ -21,3 +21,4 @@ run_board.py
 /save
 /generate_graphs.py
 /simulate_random.py
+/gui
