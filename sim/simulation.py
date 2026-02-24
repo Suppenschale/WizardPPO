@@ -15,7 +15,7 @@ class Simulation:
         self.iter = config["sim"]["iter"]
         self.dir = config["sim"]["dir"]
         self.num_players: int = config["env"]["num_players"]
-        #self.DEBUG = config[]
+        self.debug_print = config["env"]["debug_print"]
         self.game_length = 60 // self.num_players
         self.policy = network
 
@@ -67,11 +67,11 @@ class Simulation:
         winrate = [stats[i] / self.iter * 100.0 for i in range(self.num_players)]
         avg = [sum(points[i]) / len(points[i]) for i in range(self.num_players)]
 
-        if self.de
-        print("")
-        print("Simulation is over")
-        print(f"Percentage wins after {self.iter} iterations")
-        for i in range(self.num_players):
-            print(f"Player {i + 1}: {winrate[i]} (avg. points: {avg[i]})")
+        if self.debug_print:
+            print("")
+            print("Simulation is over")
+            print(f"Percentage wins after {self.iter} iterations")
+            for i in range(self.num_players):
+                print(f"Player {i + 1}: {winrate[i]} (avg. points: {avg[i]})")
 
         return winrate, avg
