@@ -4,9 +4,4 @@
 *.xml
 
 # Ignore log files
-*.npy
-*.pth
-*.txt
-*.png
 log
-*.pkl
