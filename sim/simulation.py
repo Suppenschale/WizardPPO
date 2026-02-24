@@ -1,41 +1,30 @@
 import random
-
-import torch
 import yaml
 
 from tqdm import tqdm
-
-from env.bidding_heuristic import bidding_heuristic
 from env.environment import Environment
 from nn.ppo_network import PPONetwork
 
 
 class Simulation:
 
-    def __init__(self, network: PPONetwork, state_mask: list | None = None):
+    def __init__(self, network: PPONetwork):
         with open("parameter.yaml", "r") as f:
             config = yaml.safe_load(f)
 
         self.iter = config["sim"]["iter"]
         self.dir = config["sim"]["dir"]
         self.num_players: int = config["env"]["num_players"]
+        //self.DEBUG = config[]
         self.game_length = 60 // self.num_players
         self.policy = network
-
-        if state_mask is not None:
-            self.STATE_BID_0 = state_mask[0]
-            self.MASK_BID_0 = state_mask[1]
-            self.STATE_BID_1 = state_mask[2]
-            self.MASK_BID_1 = state_mask[3]
-            self.STATE_BID_2 = state_mask[4]
-            self.MASK_BID_2 = state_mask[5]
 
     def start(self):
 
         stats = [0 for _ in range(self.num_players)]
         points = [[] for _ in range(self.num_players)]
 
-        for iteration in tqdm(range(self.iter), "Simulating"):
+        for _ in tqdm(range(self.iter), "Simulating"):
             env = Environment()
 
             for p in range(env.num_players):
@@ -45,7 +34,7 @@ class Simulation:
                 env.start_round(num_round, random.choice(range(env.num_players)))
 
                 for p in range(env.num_players):
-                    max_value = -10000000
+                    max_value = float('-inf')
                     max_bid = -1
                     for test_bid in range(env.num_rounds + 1):
                         env.players_bid[env.cur_player] = test_bid
@@ -59,15 +48,9 @@ class Simulation:
 
                 for r in range(num_round):
 
-                    for i in range(self.num_players):
+                    for _ in range(self.num_players):
                         state = env.get_state_vector()
                         action_mask = env.get_action_mask()
-
-                        #if iteration == 0 and r == 0:
-                        #    self.policies[i].print_special_state(0, self.STATE_BID_0, self.MASK_BID_0)
-                        #    self.policies[i].print_special_state(1, self.STATE_BID_1, self.MASK_BID_1)
-                        #    self.policies[i].print_special_state(2, self.STATE_BID_2, self.MASK_BID_2)
-
                         action, _, _ = self.policy.select_action(state, action_mask)
                         env.step(action)
 
@@ -81,17 +64,10 @@ class Simulation:
                 if points[player][-1] == max(final_points):
                     stats[player] += 1
 
-        print()
-        for p in range(self.num_players):
-
-            print()
-            print(f"Player {p + 1} :")
-            for i in range(self.iter):
-                print(f"  Points = {points[p][i]}")
-
         winrate = [stats[i] / self.iter * 100.0 for i in range(self.num_players)]
         avg = [sum(points[i]) / len(points[i]) for i in range(self.num_players)]
 
+        if self.de
         print("")
         print("Simulation is over")
         print(f"Percentage wins after {self.iter} iterations")
