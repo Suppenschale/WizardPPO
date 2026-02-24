@@ -13,10 +13,8 @@ class Simulation:
             config = yaml.safe_load(f)
 
         self.iter = config["sim"]["iter"]
-        self.dir = config["sim"]["dir"]
         self.num_players: int = config["env"]["num_players"]
         self.debug_print = config["env"]["debug_print"]
-        self.game_length = 60 // self.num_players
         self.policy = network
 
     def start(self):
