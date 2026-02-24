@@ -9,10 +9,10 @@ from nn.card_set_encoder import CardSetEncoder
 
 class PPONetwork(nn.Module):
 
-    def __init__(self) -> None:
+    def __init__(self, path="parameter.yaml") -> None:
         super().__init__()
 
-        with open("parameter.yaml", "r") as f:
+        with open(path, "r") as f:
             config = yaml.safe_load(f)
 
         self.num_players = config["env"]["num_players"]
@@ -98,8 +98,17 @@ class PPONetwork(nn.Module):
             # print(f"Probability to pick move: Red 10 : {prob[..., 9]}, Yellow 13 : {prob[..., 25]}")
         return action.item(), dist.log_prob(action), value
 
+    def select_action_greedy(self, x, mask):
+        with torch.no_grad():
+            value, logits = self.forward(x, mask)
+            action = torch.argmax(logits, dim=1)
+            log_prob = torch.log_softmax(logits, dim=1).gather(1, action.unsqueeze(1)).squeeze(1)
+
+        return action.item(), log_prob, value
+
     def print_special_state(self, i, x, mask):
         _, logits = self.forward(x, mask)
         prob = F.softmax(logits, dim=1)
         print(
-            f"Probability to pick move for {i} tricks : Red 10 : {prob[..., 9].item()}, Yellow 13 : {prob[..., 25].item()} ()")
+            f"Probability to pick move for {i} tricks : Red 10 : {prob[0][9].item()}, Yellow 13 : {prob[0][25].item()} ()")
+        return prob[0][9].item(), prob[0][25].item()
