@@ -4,21 +4,4 @@
 *.xml
 
 # Ignore log files
-*.npy
-*.pth
-*.txt
-*.png
 log
-*.yaml
-*.pkl
-
-# Ingore python scripts
-main.py
-evaluate.py
-run_board.py
-/nn/ppo_network_old.py
-/graph
-/save
-/generate_graphs.py
-/simulate_random.py
-/gui
