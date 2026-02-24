@@ -10,6 +10,7 @@
 *.png
 log
 *.yaml
+*.pkl
 
 # Ingore python scripts
 main.py
@@ -18,4 +19,5 @@ run_board.py
 /nn/ppo_network_old.py
 /graph
 /save
-
+/generate_graphs.py
+/simulate_random.py
