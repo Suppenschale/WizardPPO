@@ -15,6 +15,7 @@ nn:
   hidden_layer_each: 512
 
 train:
+  iter: 1000
   game_iterations: 24
   gamma: 0.995
   lambda: 0.95
@@ -23,3 +24,4 @@ train:
   clip_eps: 0.2
   a1: 0.5
   a2: 0.02
+  lr: 1.5e-4
