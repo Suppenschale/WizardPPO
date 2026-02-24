@@ -10,6 +10,7 @@ from functools import partial
 import torch
 import torch.nn.functional as F
 import os
+import numpy as np
 
 from tensorboard import program
 from torch import nn
@@ -24,8 +25,6 @@ from nn.ppo_network import PPONetwork
 from env.environment import Environment
 from sim.simulation import Simulation
 
-FIXED_TEST_ROUND = 11
-
 STATE_BID_0 = None
 MASK_BID_0 = None
 STATE_BID_1 = None
@@ -34,60 +33,91 @@ STATE_BID_2 = None
 MASK_BID_2 = None
 
 
+def build_permutation(max_val=120):
+    perm = []
+    block_size = 1
+    block_start = 0
+
+    while block_start < max_val:
+        block = np.arange(block_start, min(block_start + block_size, max_val))
+        perm.append(block[::-1])
+        block_start += block_size
+        block_size += 1
+
+    return np.concatenate(perm)
+
+def reshape_increasing(lst):
+    result = []
+    start = 0
+    size = 1
+
+    while start < len(lst):
+        result.append(lst[start:start + size])
+        start += size
+        size += 1
+
+    return result
+
+
+PERM = build_permutation()
+IDX = reshape_increasing(PERM.tolist())
+
+
 def collect_batch(game_id, policy, player_learning):
     import torch
     from env.environment import Environment
 
     env = Environment()
-    cur_round = FIXED_TEST_ROUND
-    env.start_round(cur_round, random.choice(range(env.num_players)))
 
-    states_local        = [[] for _ in range(env.num_players)]
-    action_masks_local  = [[] for _ in range(env.num_players)]
-    actions_local       = [[] for _ in range(env.num_players)]
-    rewards_local       = [[] for _ in range(env.num_players)]
-    log_probs_local     = [[] for _ in range(env.num_players)]
-    values_local        = [[] for _ in range(env.num_players)]
+    states_local = [[] for _ in range(env.num_players)]
+    action_masks_local = [[] for _ in range(env.num_players)]
+    actions_local = [[] for _ in range(env.num_players)]
+    rewards_local = [[] for _ in range(env.num_players)]
+    log_probs_local = [[] for _ in range(env.num_players)]
+    values_local = [[] for _ in range(env.num_players)]
 
-    for player in range(env.num_players):
-        max_value = -10000000
-        max_bid = -1
-        for test_bid in range(env.num_rounds + 1):
-            env.players_bid[env.cur_player] = test_bid
-            state = env.get_state_vector()
-            action_mask = env.get_action_mask()
-            value, _ = policy(state, action_mask)
-            if value > max_value:
-                max_value = value
-                max_bid = test_bid
-        selected_bid = bidding_heuristic(cur_round, max_bid)
-        env.bid(selected_bid)
+    for cur_round in range(1, 16):
+        env.start_round(cur_round, random.choice(range(env.num_players)))
 
-    for _ in range(env.num_rounds):
+        for player in range(env.num_players):
+            max_value = -10000000
+            max_bid = -1
+            for test_bid in range(env.num_rounds + 1):
+                env.players_bid[env.cur_player] = test_bid
+                state = env.get_state_vector()
+                action_mask = env.get_action_mask()
+                value, _ = policy(state, action_mask)
+                if value > max_value:
+                    max_value = value
+                    max_bid = test_bid
+            selected_bid = bidding_heuristic(cur_round, max_bid)
+            env.bid(selected_bid)
 
-        start = env.get_start_player()
-        for i in range(env.num_players):
-            state = env.get_state_vector()
-            action_mask = env.get_action_mask()
+        for _ in range(env.num_rounds):
 
-            player = (start + i) % env.num_players
+            start = env.get_start_player()
+            for i in range(env.num_players):
+                state = env.get_state_vector()
+                action_mask = env.get_action_mask()
 
-            with torch.no_grad():
-                action, log_prob, value = policy.select_action(state, action_mask)
+                player = (start + i) % env.num_players
 
-            states_local[player].append(state)
-            action_masks_local[player].append(action_mask)
-            actions_local[player].append(action)
-            log_probs_local[player].append(log_prob)
-            values_local[player].append(value)
+                with torch.no_grad():
+                    action, log_prob, value = policy.select_action(state, action_mask)
 
-            env.step(action)
+                states_local[player].append(state)
+                action_masks_local[player].append(action_mask)
+                actions_local[player].append(action)
+                log_probs_local[player].append(log_prob)
+                values_local[player].append(value)
 
-    for player in range(env.num_players):
-        for _ in range(cur_round - 1):
-            rewards_local[player].append(0)
-        reward = env.players_points[player]
-        rewards_local[player].append(reward if True else reward * 10)
+                env.step(action)
+
+        for player in range(env.num_players):
+            for _ in range(cur_round - 1):
+                rewards_local[player].append(0)
+            reward = env.players_points[player]
+            rewards_local[player].append(reward if True else reward * 10)
 
     return {
         'states': [state for state_list in states_local for state in state_list],
@@ -171,22 +201,23 @@ class Training:
 
     def compute_advantages(self, rewards, values):
 
-        returns = [0 for _ in range(len(rewards))]
-        advantages = [0 for _ in range(len(rewards))]
-        T = FIXED_TEST_ROUND  # self.num_of_rounds
+        rewards_reshaped = rewards.reshape(-1, 120)
+        values_reshaped = values.reshape(-1, 120)
 
-        for n in range(self.game_iterations * self.num_players):
-            gae = 0
-            value_next = 0
-            for i in reversed(range(T)):
-                t = n * T + i
-                delta = rewards[t] + self.gamma * value_next - values[t]
-                gae = delta + self.gamma * self.lamb * gae
-                advantages[t] = gae
-                value_next = values[t]
-                returns[t] = gae + values[t]
+        returns_reshaped = torch.zeros_like(rewards_reshaped, dtype=torch.float32)
+        advantages_reshaped = torch.zeros_like(rewards_reshaped, dtype=torch.float32)
 
-        return torch.tensor(advantages, dtype=torch.float32), torch.tensor(returns, dtype=torch.float32)
+        for i in range(len(IDX)):
+            gae = torch.zeros(rewards_reshaped.shape[0])
+            value_next = torch.zeros(rewards_reshaped.shape[0])
+            for t in IDX[i]:
+                delta = rewards_reshaped[:, t] + self.gamma * value_next[:] - values_reshaped[:, t]
+                gae = delta[:] + self.gamma * self.lamb * gae[:]
+                advantages_reshaped[:, t] = gae[:]
+                value_next = values_reshaped[:, t]
+                returns_reshaped[:, t] = gae[:] + values_reshaped[:, t]
+
+        return advantages_reshaped.flatten(), returns_reshaped.flatten()
 
     def ppo_update(self, batch):
 
@@ -231,11 +262,11 @@ class Training:
                 ratio = torch.exp(log_probs_new - mb_log_probs_old)
                 surrogate1 = ratio * mb_advantages
                 surrogate2 = torch.clamp(ratio, 1 - self.clip_eps, 1 + self.clip_eps) * mb_advantages
-                policy_loss = -torch.min(surrogate1, surrogate2).mean()
+                policy_loss = torch.min(surrogate1, surrogate2).mean()
 
                 value_loss = F.mse_loss(value.squeeze(-1), mb_returns)
 
-                loss = policy_loss + self.a1 * value_loss - self.a2 * entropy
+                loss = -policy_loss + self.a1 * value_loss - self.a2 * entropy
 
                 #print(f"Value loss : {value_loss}, Loss : {loss}, Policy loss : {policy_loss}")
 
@@ -243,9 +274,6 @@ class Training:
                 loss.backward()
                 self.optimizer.step()
 
-        #self.policy.print_special_state(0, STATE_BID_0, MASK_BID_0)
-        #self.policy.print_special_state(1, STATE_BID_1, MASK_BID_1)
-        #self.policy.print_special_state(2, STATE_BID_2, MASK_BID_2)
         self.writer.add_scalar(tag="Loss/Value", scalar_value=value_loss, global_step=self.train_count)
         self.writer.add_scalar(tag="Loss/Policy", scalar_value=policy_loss, global_step=self.train_count)
         self.writer.add_scalar(tag="Loss/Loss", scalar_value=loss, global_step=self.train_count)
@@ -266,7 +294,7 @@ class Training:
         self.policy.eval()
 
         sim = Simulation(self.policy, [STATE_BID_0, MASK_BID_0, STATE_BID_1, MASK_BID_1, STATE_BID_2, MASK_BID_2])
-        winrate, avg_points = sim.start(FIXED_TEST_ROUND)
+        winrate, avg_points = sim.start()
 
         #sim_random = Simulation(PPONetwork(), [STATE_BID_0, MASK_BID_0, STATE_BID_1, MASK_BID_1, STATE_BID_2, MASK_BID_2])
         #winrate_random, avg_points_random = sim_random.start(FIXED_TEST_ROUND)
@@ -277,6 +305,13 @@ class Training:
         self.writer.add_scalars("Rewards/Policy",
                                 {f"Player {p}": avg_points[p] for p in range(self.num_players)},
                                 global_step=self.eval_count)
+
+        #red10_0, yellow13_0, = self.policy.print_special_state(0, STATE_BID_0, MASK_BID_0)
+        #red10_1, yellow13_1, = self.policy.print_special_state(1, STATE_BID_1, MASK_BID_1)
+        #red10_2, yellow13_2, = self.policy.print_special_state(2, STATE_BID_2, MASK_BID_2)
+        #self.writer.add_scalars("Action/Bid 0", {"Red 10": red10_0, "Yellow 13": yellow13_0}, global_step=self.eval_count)
+        #self.writer.add_scalars("Action/Bid 1", {"Red 10": red10_1, "Yellow 13": yellow13_1}, global_step=self.eval_count)
+        #self.writer.add_scalars("Action/Bid 2", {"Red 10": red10_2, "Yellow 13": yellow13_2}, global_step=self.eval_count)
 
         #self.writer.add_scalars("Winrates/Random",
         #                        {f"Player {p}": winrate_random[p] for p in range(self.num_players)},
@@ -349,9 +384,6 @@ class Training:
         losses = []
 
         try:
-
-            self.setup_special_state()
-
             pbar = trange(iterations)
             for i in pbar:
                 batch = self.collect_batch_parallel()
