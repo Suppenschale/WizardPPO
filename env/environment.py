@@ -157,41 +157,6 @@ class Environment:
             # Last round, set dummy trump
             self.trump = DUMMY_CARD
 
-        ############################################
-        # SETUP SPECIAL SETUP
-
-        #self.trump = Card(2, Suit.RED)
-
-        #self.players_hand[0] = [Card(10, Suit.RED), Card(13, Suit.YELLOW)]
-        #self.players_hand[1] = [Card(5, Suit.RED), Card(3, Suit.BLUE)]
-        #self.players_hand[2] = [Card(9, Suit.RED), Card(11, Suit.GREEN)]
-        #self.players_hand[3] = [Card(7, Suit.RED), Card(9, Suit.BLUE)]
-
-        #self.cards_played = [self.trump]
-
-        if False:
-            self.trump = Card(0, Suit.NO_SUIT)
-
-            self.players_hand[0] = [Card(14, Suit.NO_SUIT), Card(13, Suit.GREEN), Card(9, Suit.GREEN),
-                                    Card(8, Suit.GREEN), Card(7, Suit.GREEN), Card(6, Suit.GREEN),
-                                    Card(5, Suit.GREEN), Card(4, Suit.GREEN), Card(3, Suit.GREEN),
-                                    Card(2, Suit.GREEN), Card(1, Suit.GREEN)]
-            self.players_hand[1] = [Card(12, Suit.GREEN), Card(1, Suit.RED), Card(2, Suit.RED),
-                                    Card(3, Suit.RED), Card(4, Suit.RED), Card(5, Suit.RED),
-                                    Card(6, Suit.RED), Card(7, Suit.RED), Card(8, Suit.RED),
-                                    Card(9, Suit.RED), Card(10, Suit.RED)]
-            self.players_hand[2] = [Card(11, Suit.GREEN), Card(1, Suit.YELLOW), Card(2, Suit.YELLOW),
-                                    Card(3, Suit.YELLOW), Card(4, Suit.YELLOW), Card(5, Suit.YELLOW),
-                                    Card(6, Suit.YELLOW), Card(7, Suit.YELLOW), Card(8, Suit.YELLOW),
-                                    Card(9, Suit.YELLOW), Card(10, Suit.YELLOW)]
-            self.players_hand[3] = [Card(10, Suit.GREEN), Card(1, Suit.BLUE), Card(2, Suit.BLUE),
-                                    Card(3, Suit.BLUE), Card(4, Suit.BLUE), Card(5, Suit.BLUE),
-                                    Card(6, Suit.BLUE), Card(7, Suit.BLUE), Card(8, Suit.BLUE),
-                                    Card(9, Suit.BLUE), Card(10, Suit.BLUE)]
-
-            self.cards_played = [self.trump]
-        ############################################
-
         if self.DEBUG_PRINT or (self.DEBUG_ROUND and self.num_rounds == self.ROUND):
             print(f"Start of round {self.num_rounds}")
             print(f"Trump card: {self.trump}")
