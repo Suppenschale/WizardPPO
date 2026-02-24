@@ -9,7 +9,6 @@ from datetime import datetime
 
 from env.bidding_heuristic import bidding_heuristic
 from env.suit import Suit
-from nn.card_embedding import CardEmbedding
 from nn.ppo_network import PPONetwork
 from env.environment import Environment
 from sim.simulation import Simulation
