@@ -1,0 +1,30 @@
+env:
+  num_players: 4
+  deck_size: 60
+  seed: 16112004
+  random: False
+  debug_print: False
+  debug_round: False
+  round: 5
+
+sim:
+  iter: 500
+  dir: "./data"
+
+nn:
+  input_layer: 3 #1213
+  hidden_layer_shared: 512
+  hidden_layer_each: 256
+
+embedding:
+  emb_dim: 15
+
+train:
+  game_iterations: 48
+  gamma: 0.995
+  lambda: 0.95
+  epochs: 4
+  minibatch_size: 256
+  clip_eps: 0.2
+  a1: 0.5
+  a2: 0.02
