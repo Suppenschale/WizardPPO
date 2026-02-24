@@ -1,4 +1,0 @@
-* Replace r + s in CardEmbedding by more complex network
-* Cache r + s
-
-* replace list of hands to set (environment.py) -> turns weights to nan?
