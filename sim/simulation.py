@@ -15,7 +15,7 @@ class Simulation:
         self.iter = config["sim"]["iter"]
         self.dir = config["sim"]["dir"]
         self.num_players: int = config["env"]["num_players"]
-        //self.DEBUG = config[]
+        #self.DEBUG = config[]
         self.game_length = 60 // self.num_players
         self.policy = network
 
