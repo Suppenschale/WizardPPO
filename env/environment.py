@@ -36,9 +36,9 @@ def one_hot_encode_cards(cards: list[Card]) -> list:
 
 class Environment:
 
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, path="parameter.yaml"):
 
-        with open("parameter.yaml", "r") as f:
+        with open(path, "r") as f:
             self.config = yaml.safe_load(f)
 
         if self.config["env"]["random"]:
@@ -538,4 +538,4 @@ class Environment:
             torch.tensor([tricks_opp3 == bid_opp3]),       # 1 if tricks == bid else 0
         ])
 
-        return state_tensor.unsqueeze(0)  # add batch dim (1, 626)
+        return state_tensor.unsqueeze(0)  # add batch dim (1, 661)
