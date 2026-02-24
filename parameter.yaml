@@ -4,23 +4,18 @@ env:
   seed: 16112004
   random: False
   debug_print: False
-  debug_round: False
-  round: 5
 
 sim:
   iter: 500
   dir: "./data"
 
 nn:
-  input_layer: 3 #1213
-  hidden_layer_shared: 512
-  hidden_layer_each: 256
-
-embedding:
-  emb_dim: 15
+  input_layer: 661
+  hidden_layer_shared: 1024
+  hidden_layer_each: 512
 
 train:
-  game_iterations: 48
+  game_iterations: 24
   gamma: 0.995
   lambda: 0.95
   epochs: 4
