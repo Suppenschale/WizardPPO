@@ -14,12 +14,9 @@ class PPONetwork(nn.Module):
 
         self.num_players = config["env"]["num_players"]
         self.deck_size = config["env"]["deck_size"]
-        self.emb_dim = config["embedding"]["emb_dim"]
         self.input_layer = config["nn"]["input_layer"]
         self.hidden_layer_shared = config["nn"]["hidden_layer_shared"]
         self.hidden_layer_each = config["nn"]["hidden_layer_each"]
-
-        self.max_rounds = self.deck_size // self.num_players
 
         self.shared = nn.Linear(self.input_layer, self.hidden_layer_shared)
         self.hidden_layer_state = nn.Linear(self.hidden_layer_shared, self.hidden_layer_each)
