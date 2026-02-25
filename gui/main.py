@@ -1,6 +1,7 @@
 import os
 import random
 import tkinter as tk
+import argparse
 
 import torch
 
@@ -73,68 +74,40 @@ class WizardGameGUI:
 
         self.build_table_layout()
 
-        # Bid input frame in the bottom-right of game_frame
         self.bid_input_frame = tk.Frame(self.game_frame, bg="lightgray", bd=2, relief=tk.RIDGE)
         self.bid_input_frame.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)  # bottom-right with padding
 
-        # Label
         tk.Label(self.bid_input_frame, text="Enter your bid:").pack(side=tk.LEFT, padx=5)
 
-        # Entry box
         self.bid_entry = tk.Entry(self.bid_input_frame, width=5)
         self.bid_entry.pack(side=tk.LEFT, padx=5)
 
-        # Button to submit
         self.bid_button = tk.Button(self.bid_input_frame, text="Submit", command=self.submit_bid, state="disabled")
         self.bid_button.pack(side=tk.LEFT, padx=5)
 
-        # Points display frame in top-right corner of game_frame
         self.points_frame = tk.Frame(self.game_frame, bg="lightyellow", bd=2, relief=tk.RIDGE)
         self.points_frame.place(relx=1.0, rely=0.0, anchor="ne", x=-10, y=10)  # top-right
 
         self.points_labels = {}
         for player_id in range(4):
             label = tk.Label(self.points_frame, text=f"Player {player_id}: 0", bg="lightyellow", anchor="w")
-            label.pack(fill=tk.X, pady=2)  # fill X so text is left-aligned
+            label.pack(fill=tk.X, pady=2)
             self.points_labels[player_id] = label
 
-        # Add Start Round button to debug frame
         self.start_button = tk.Button(
             self.debug_frame,
             text="Start Game",
-            command=self.start_game  # this should be your function that loops over game states
+            command=self.start_game
         )
         self.start_button.pack(pady=10, padx=10)
 
-        # Add second button under it
         self.next_button = tk.Button(
             self.debug_frame,
             text="Next Step",
-            command=self.trigger_next_step,  # create this function
+            command=self.trigger_next_step,
             state="disabled"
         )
         self.next_button.pack(pady=10, padx=10, fill=tk.X)
-
-        # example test
-        #self.show_player_cards(0, ["back" for _ in range(15)])
-        #self.show_player_cards(1, ["back" for _ in range(15)])
-        #self.show_player_cards(2, ["back" for _ in range(15)])
-        #self.show_player_cards(3, ["back" for _ in range(15)])
-
-        #self.set_trump_card("red_1")
-
-        # Players play cards
-        #self.play_card_middle(0, "green_10")
-        #self.play_card_middle(1, "yellow_7")
-        # self.play_card_middle(2, "wizard_1")
-        #self.play_card_middle(3, "jester_1")
-
-        #self.set_player_bid(0, 1)
-
-        #self.set_player_points(0, 10)
-        #self.set_player_points(1, 5)
-        #self.set_player_points(2, 8)
-        #self.set_player_points(3, 12)
 
     def trigger_next_step(self):
         self.next = True
@@ -186,7 +159,7 @@ class WizardGameGUI:
                 self.bid_button.config(state="active")
                 self.wait_for_player_bid(num_round)
             else:
-                max_value = -10000000
+                max_value = float('-inf')
                 max_bid = -1
                 for test_bid in range(self.env.num_rounds + 1):
                     self.env.players_bid[self.env.cur_player] = test_bid
@@ -309,42 +282,33 @@ class WizardGameGUI:
         self.create_player_area(2, 0, 1)
         self.create_player_area(3, 1, 2)
 
-        # cache for card images (important!)
         self.card_image_cache = {}
 
-        # store card widgets per player
         self.card_widgets = {}
 
-        # Middle frame for trick + trump
         self.middle_frame = tk.Frame(self.game_frame, bg="darkgreen")
         self.middle_frame.grid(row=1, column=1, sticky="nsew", padx=10, pady=10)
 
-        # Use grid layout inside middle_frame
         self.middle_frame.grid_rowconfigure(0, weight=1)
         self.middle_frame.grid_rowconfigure(1, weight=1)
         self.middle_frame.grid_columnconfigure(0, weight=1)
         self.middle_frame.grid_columnconfigure(1, weight=1)
 
-        # Frame for played cards (center)
         self.trick_frame = tk.Frame(self.middle_frame, bg="darkgreen")
         self.trick_frame.grid(row=1, column=1, sticky="nsew")
 
-        # Trump card in top-right corner
         self.trump_label = tk.Label(self.middle_frame, text="Trump", bg="black")
         self.trump_label.grid(row=0, column=1, sticky="ne", padx=5, pady=5)
 
-        # Store current played cards
         self.played_card_labels = {}
 
     def update_player_points(self):
-        """Update the points label for a player."""
         print("Update player points")
         print(f"{self.points=}")
         for player_id in range(self.env.num_players):
             self.points_labels[player_id].config(text=f"Player {player_id}: {self.points[player_id]}")
 
     def submit_bid(self):
-        """Called when the player clicks the Submit button."""
         bid_text = self.bid_entry.get()
 
         try:
@@ -360,20 +324,17 @@ class WizardGameGUI:
 
         cards_frame = self.player_frames[player_id]["cards_frame"]
 
-        # clear old widgets
         for widget in cards_frame.winfo_children():
             widget.destroy()
 
         self.card_widgets[player_id] = []
 
-        # limit to 15 cards
         cards = cards[:15]
 
-        # choose packing direction
-        if player_id in [1, 3]:  # left or right
+        if player_id in [1, 3]:
             side = tk.TOP
             padx, pady = 2, 2
-        else:  # bottom (0) or top (2)
+        else:
             side = tk.LEFT
             padx, pady = 2, 2
 
@@ -385,7 +346,6 @@ class WizardGameGUI:
                 img = self.load_card_image(f"{card}_{player_id}")
 
             if player_id == 0:
-                # clickable card
                 label = tk.Label(
                     cards_frame,
                     image=img,
@@ -396,7 +356,6 @@ class WizardGameGUI:
                 label.image = img
 
             else:
-                # non-clickable
                 label = tk.Label(
                     cards_frame,
                     image=img,
@@ -405,7 +364,6 @@ class WizardGameGUI:
                 )
                 label.image = img
 
-            # pack based on direction
             label.pack(side=side, padx=padx, pady=pady)
             label.card = card
             label.i = i
@@ -414,19 +372,13 @@ class WizardGameGUI:
 
     def load_card_image(self, card_name, size=3):
 
-        #if card_name in self.card_image_cache:
-        #    return self.card_image_cache[card_name]
-
         path = os.path.join("gui", "cards", f"{card_name}.png")
 
         try:
             img = tk.PhotoImage(file=path)
-
-            # optional resize (subsample reduces size)
             img = img.subsample(size, size)
 
         except Exception:
-            # fallback if image missing
             img = tk.PhotoImage(width=60, height=90)
 
         self.card_image_cache[card_name] = img
@@ -443,11 +395,9 @@ class WizardGameGUI:
 
         frame.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
 
-        # Player name label
         label = tk.Label(frame, text=f"Player {player_id}")
         label.pack(side=tk.TOP)
 
-        # Bidding label (initially empty)
         bidding_label = tk.Label(frame, text="Bid: - | Trick: -")
         bidding_label.pack(side=tk.TOP, pady=(0, 5))
 
@@ -457,17 +407,15 @@ class WizardGameGUI:
         self.player_frames[player_id] = {
             "frame": frame,
             "cards_frame": cards_frame,
-            "bidding_label": bidding_label  # store for updates
+            "bidding_label": bidding_label
         }
 
     def set_player_bid(self, player_id, bid):
-        """Update the bid label of a player."""
         if player_id in self.player_frames:
             label = self.player_frames[player_id]["bidding_label"]
             label.config(text=f"Bid: {bid} | Trick: 0")
 
     def disable_hand_cards(self):
-
         for label in self.card_widgets[0]:
             label.unbind("<Button-1>")
 
@@ -494,29 +442,22 @@ class WizardGameGUI:
 
         self.selected_card = card
 
-        # Example: play card in environment
-        # self.env.play_card(card)
-        # self.update_gui()
-
     def play_card_middle(self, player_id, card_name):
-        """Display a card from a player in the middle trick area."""
         img = self.load_card_image(f"{card_name}_{player_id}", size=1)
 
-        # clear previous card for that player
         if player_id in self.played_card_labels:
             self.played_card_labels[player_id].destroy()
 
         label = tk.Label(self.trick_frame, image=img, bd=2, relief=tk.RAISED)
         label.image = img
 
-        # assign grid position based on player
-        if player_id == 0:  # bottom
+        if player_id == 0:
             label.grid(row=2, column=1, pady=5)
-        elif player_id == 1:  # left
+        elif player_id == 1:
             label.grid(row=1, column=0, padx=5)
-        elif player_id == 2:  # top
+        elif player_id == 2:
             label.grid(row=0, column=1, pady=5)
-        elif player_id == 3:  # right
+        elif player_id == 3:
             label.grid(row=1, column=2, padx=5)
 
         self.played_card_labels[player_id] = label
@@ -531,19 +472,29 @@ class WizardGameGUI:
 def main():
     print("Start Game!")
 
+    parser = argparse.ArgumentParser(description="Run Wizard PPO GUI")
+    parser.add_argument(
+        "--model-path",
+        required=False,
+        default=None,
+        help="Path to the trained model file"
+    )
+
+    args = parser.parse_args()
+
     env = Environment(path="parameter.yaml")
     network = PPONetwork(path="parameter.yaml")
 
-    path = os.path.join("save", "final", "extend1")
+    if args.model_path is not None and not os.path.exists(args.model_path):
+        raise FileNotFoundError(f"The path '{args.model_path}' does not exist.")
 
-    last_dict = torch.load(os.path.join(path, "last_model.pth"), weights_only=True)
-
-    network.load_state_dict(last_dict)
+    if args.model_path is not None:
+        model_dict = torch.load(args.model_path, weights_only=True)
+        network.load_state_dict(model_dict)
 
     root = tk.Tk()
 
     WizardGameGUI(root, env, network)
-
     root.mainloop()
 
 
