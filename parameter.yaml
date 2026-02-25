@@ -6,8 +6,7 @@ env:
   debug_print: False
 
 sim:
-  iter: 500
-  dir: "./data"
+  iter: 25
 
 nn:
   input_layer: 661

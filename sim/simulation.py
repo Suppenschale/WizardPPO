@@ -22,7 +22,7 @@ class Simulation:
         stats = [0 for _ in range(self.num_players)]
         points = [[] for _ in range(self.num_players)]
 
-        for _ in tqdm(range(self.iter), "Simulating"):
+        for _ in tqdm(range(self.iter), "Simulating", position=1, leave=False):
             env = Environment()
 
             for p in range(env.num_players):

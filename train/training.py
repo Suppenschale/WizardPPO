@@ -52,7 +52,6 @@ IDX = reshape_increasing()
 
 
 def collect_batch(policy):
-    import torch
     from env.environment import Environment
 
     env = Environment()
@@ -88,10 +87,9 @@ def collect_batch(policy):
                 state = env.get_state_vector()
                 action_mask = env.get_action_mask()
 
-                player = (start + i) % env.num_players
-
                 action, log_prob, value = policy.select_action(state, action_mask)
 
+                player = (start + i) % env.num_players
                 states_local[player].append(state)
                 action_masks_local[player].append(action_mask)
                 actions_local[player].append(action)
@@ -153,7 +151,7 @@ class Training:
         num_workers = min(self.game_iterations, multiprocessing.cpu_count())
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=num_workers) as executors:
-            future_to_game = {executors.submit(worker_func, game): game for game in range(self.game_iterations)}
+            future_to_game = {executors.submit(worker_func): game for game in range(self.game_iterations)}
 
             for future in concurrent.futures.as_completed(future_to_game):
                 try:
@@ -272,7 +270,7 @@ class Training:
     def training_loop(self, iterations):
 
         try:
-            pbar = trange(iterations)
+            pbar = trange(iterations, desc="Training", position=0)
             for _ in pbar:
                 batch = self.collect_batch_parallel()
                 value_loss, loss = self.ppo_update(batch)

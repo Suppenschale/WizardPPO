@@ -1,11 +1,14 @@
 import os
 import yaml
+import warnings
 
 from tensorboard import program
 from torch.optim import Adam
 from datetime import datetime
 from nn.ppo_network import PPONetwork
 from train.training import Training
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def start_tensorboard(path, port=6006):
