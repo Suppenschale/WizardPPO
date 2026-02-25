@@ -45,6 +45,7 @@ To test the trained model a playable interface is provided.
 
 This GUI is experimental! 
 There may be display issues with cards and no guarantee of correctness is provided.
+When no path is provided, a random policy is used.
 
 ```python
 python -m gui.main --model-path PATH/TO/MODEL
