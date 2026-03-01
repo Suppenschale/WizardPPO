@@ -1,7 +1,9 @@
+import csv
 import os
 import random
 import tkinter as tk
 import argparse
+from datetime import datetime
 
 import torch
 
@@ -47,6 +49,11 @@ class WizardGameGUI:
         self.selected_card = None
         self.next = None
         self.points = [0 for _ in range(env.num_players)]
+
+        self.timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        self.path = os.path.join("gui", "log")
+        os.makedirs(self.path, exist_ok=True)
+        self.points_each_round = {f"Player{p}": [] for p in range(env.num_players)}
 
         root.title("Wizard Game GUI")
         root.geometry("1000x700")
@@ -132,10 +139,10 @@ class WizardGameGUI:
                     self.play_card_middle(player_id, "back")
 
             if self.env.bidding is None:
-                print(f"{self.env.players_points=}")
                 for player_id in range(self.env.num_players):
                     self.points[player_id] += self.env.players_points[player_id]
-                    self.update_player_points()
+                    self.points_each_round[f"Player{player_id}"].append(self.points[player_id])
+                self.update_player_points()
                 self.start_next(num_round + 1, phase="start")
             else:
                 self.start_next(num_round, phase="play")
@@ -147,6 +154,16 @@ class WizardGameGUI:
         if phase == "start":
             if num_round == 16:
                 print("Game is over!")
+
+                with open(os.path.join(self.path, f"{self.timestamp}_scores.csv"), "w", newline="") as f:
+                    writer = csv.writer(f)
+
+                    writer.writerow(["Round"] + list(self.points_each_round.keys()))
+
+                    for i in range(15):
+                        row = [i + 1] + [self.points_each_round[player][i] for player in self.points_each_round]
+                        writer.writerow(row)
+
                 return
             print(f"Start round {num_round}")
             self.env.start_round(num_round, start_player=random.choice(range(num_players)))
@@ -205,8 +222,6 @@ class WizardGameGUI:
             card = self.selected_card
             self.selected_card = None
             suit, rank = card.split("_")
-            print(f"{suit=}")
-            print(f"{rank=}")
             suit_to_index = {s: i for i, s in enumerate(['red', 'yellow', 'green', 'blue'])}
             if suit == "jester":
                 action = JESTER_POS
@@ -229,6 +244,7 @@ class WizardGameGUI:
             if self.env.bidding is None:
                 for player_id in range(self.env.num_players):
                     self.points[player_id] += self.env.players_points[player_id]
+                    self.points_each_round[f"Player{player_id}"].append(self.points[player_id])
                 self.update_player_points()
                 self.start_next(num_round + 1, phase="start")
             else:
@@ -248,8 +264,6 @@ class WizardGameGUI:
             color = "white"
         else:
             color = trump.suit.name.lower()
-
-        print(f"Trump color to set: {color} (Card : {trump})")
 
         self.set_trump_card(card_to_name(trump), color)
         self.update_hand_card()
@@ -303,8 +317,6 @@ class WizardGameGUI:
         self.played_card_labels = {}
 
     def update_player_points(self):
-        print("Update player points")
-        print(f"{self.points=}")
         for player_id in range(self.env.num_players):
             self.points_labels[player_id].config(text=f"Player {player_id}: {self.points[player_id]}")
 
@@ -422,19 +434,14 @@ class WizardGameGUI:
     def enable_hand_cards(self):
 
         actions = [card_to_name(card) for card in self.env.actions()]
-        print(actions)
-
         for label in self.card_widgets[0]:
             if label.card in actions:
-                print(f"{label.card=} is in {actions=}")
                 label.bind(
                     "<Button-1>",
                     lambda e, c=label.card, idx=label.i: self.on_card_clicked(c, idx)
                 )
 
     def on_card_clicked(self, card, index):
-
-        print(f"Clicked card: {card}, index: {index}")
 
         self.status_label.config(
             text=f"You clicked {card}"
